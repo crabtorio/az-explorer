@@ -1,0 +1,10 @@
+[package]
+name = "AZ-Explorer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossbeam-channel = "0.5.16"
+
+common-game = { git = "https://github.com/unitn-ap-2025/common.git", version = "3.0.0" }
+explorer-common = { git = "https://github.com/crabtorio/explorer-common"}
