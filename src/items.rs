@@ -1,35 +1,50 @@
-/* TODO
-- Import Resources
-- Import communication to planet
-- Create Bag
-- Implement bag analysis and scoring
-- Implement bag management
- */
 
-/*
 use common_game::components::resource as resource_lib;
-use resource_lib::ResourceType as ResourceIdeaContainer;
-use resource_lib::BasicResourceType as BasicResourceIdea;
-use resource_lib::ComplexResourceType as ComplexResourceIdea;
-*/
-
+use common_game::components::resource::{ResourceType, BasicResource, BasicResourceType, ComplexResource, ComplexResourceType, GenericResource};
 use explorer_common::Bag;
-use crate::communication::PlanetComms;
-
 pub struct Inventory {
     bag: Bag,
 }
 
 impl Inventory {
-    pub fn new() -> Inventory {
-        Inventory { bag: Bag::new() }
+    pub fn new(bag: Bag) -> Inventory {
+        Inventory { bag }
     }
 
-    fn request_item() {
-
+    pub fn get_bag(&mut self) -> &mut Bag {
+        &mut self.bag
     }
 
-    fn try_craft() {
+    pub fn has_resource(&self, resource_type: common_game::components::resource::ResourceType) -> usize {
+        self.bag.contains(resource_type)
+    }
 
+    pub fn get_basic(&mut self, what: BasicResourceType) -> Option<GenericResource> {
+        let mut ret = None;
+        for i in 0..self.bag.resources.len().clone() {
+            match self.bag.resources[i].get_type() {
+                ResourceType::Basic(A) => {
+                    if ret.is_some() {
+                        ret = Some(self.bag.resources.remove(i));
+                    }
+                }
+                _ => { ret = None}
+            }
+        }
+        ret
+    }
+    pub fn get_complex(&mut self, what: ComplexResourceType) -> Option<GenericResource> {
+        let mut ret = None;
+        for i in 0..self.bag.resources.len().clone() {
+            match self.bag.resources[i].get_type() {
+                ResourceType::Complex(B) => {
+                    if ret.is_none() && what == B {
+                        ret = Some(self.bag.resources.remove(i));
+                    }
+                }
+                _ => { ret = None }
+            }
+        }
+        ret
     }
 }

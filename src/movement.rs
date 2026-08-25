@@ -1,13 +1,15 @@
 pub const EXPECTED_RANDOM_COST: usize = 15;
 
+use std::any::Any;
+use std::cell::RefCell;
 use common_game::{utils::ID};
-use common_game::components::resource::{ResourceType};
+use common_game::components::resource::{BasicResourceType, ComplexResourceType, ResourceType};
 
-use std::{cell::RefCell, rc::Rc, hash::*};
 use std::collections::{HashMap, HashSet, VecDeque};
-use common_game::components::planet::PlanetType::{C, D};
-use crossbeam_channel::unbounded;
-use crate::movement::PlanetStatus::Explored;
+use std::rc::Rc;
+use rand::{rng, Rng};
+
+use crate::communication::{OrchestratorComms, PlanetComms};
 
 enum PlanetStatus{
     Unexplored,
@@ -15,7 +17,7 @@ enum PlanetStatus{
 }
 
 impl PlanetStatus{
-    fn get_content(&self) -> Option<&HashSet<ResourceType>> {
+    fn get_content(&self) -> Option<&HashSet<AnyResource>> {
         match self {
             PlanetStatus::Unexplored => None,
             PlanetStatus::Explored(cont) => Some(cont.get_products())
@@ -30,18 +32,17 @@ struct Planet {
 pub type Path = Vec<ID>;
 
 struct PlanetContent {
-    // TODO put all useful and knowable planet information here
-    produces: HashSet<ResourceType>,
+    produces: HashSet<AnyResource>,
 }
 
 impl PlanetContent {
-    fn new(produces: HashSet<ResourceType>) -> PlanetContent {
+    fn new(produces: HashSet<AnyResource>) -> PlanetContent {
         PlanetContent{
             produces,
         }
     }
 
-    fn get_products(&self) -> &HashSet<ResourceType> {
+    fn get_products(&self) -> &HashSet<AnyResource> {
         &self.produces
     }
 }
@@ -65,37 +66,100 @@ impl Planet {
     }
 }
 
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum AnyResource {
+    Oxygen,
+    Hydrogen,
+    Carbon,
+    Silicon,
+    Water,
+    Life,
+    Dolphin,
+    Robot,
+    Diamond,
+    AiPartner
+}
+
+impl From<&BasicResourceType> for AnyResource {
+    fn from(resource_type: &BasicResourceType) -> Self {
+        match resource_type {
+            BasicResourceType::Oxygen => AnyResource::Oxygen,
+            BasicResourceType::Hydrogen => AnyResource::Hydrogen,
+            BasicResourceType::Carbon => AnyResource::Carbon,
+            BasicResourceType::Silicon => AnyResource::Silicon
+        }
+    }
+}
+
+impl From<&ComplexResourceType> for AnyResource {
+    fn from(resource_type: &ComplexResourceType) -> Self {
+        match resource_type {
+            ComplexResourceType::Water => AnyResource::Water,
+            ComplexResourceType::Life => AnyResource::Life,
+            ComplexResourceType::Dolphin => AnyResource::Dolphin,
+            ComplexResourceType::Robot => AnyResource::Robot,
+            ComplexResourceType::Diamond => AnyResource::Diamond,
+            ComplexResourceType::AIPartner => AnyResource::AiPartner
+        }
+    }
+}
+
+impl Into<ResourceType> for AnyResource {
+    fn into(self) -> ResourceType {
+        match self {
+            AnyResource::Oxygen => {ResourceType::Basic(BasicResourceType::Oxygen)},
+            AnyResource::Hydrogen=> ResourceType::Basic(BasicResourceType::Hydrogen),
+            AnyResource::Carbon=> ResourceType::Basic(BasicResourceType::Carbon),
+            AnyResource::Silicon=> ResourceType::Basic(BasicResourceType::Silicon),
+            AnyResource::Water=> ResourceType::Complex(ComplexResourceType::Water),
+            AnyResource::Life=> ResourceType::Complex(ComplexResourceType::Life),
+            AnyResource::Dolphin=> ResourceType::Complex(ComplexResourceType::Dolphin),
+            AnyResource::Robot=> ResourceType::Complex(ComplexResourceType::Robot),
+            AnyResource::Diamond=> ResourceType::Complex(ComplexResourceType::Diamond),
+            AnyResource::AiPartner=> ResourceType::Complex(ComplexResourceType::AIPartner)
+        }
+    }
+}
+
 pub struct Memory {
-    weights: HashMap<ID, HashMap<ResourceType, i32>>,
+    current: ID,
+    weights: HashMap<ID, HashMap<AnyResource, i32>>,
     map: HashMap<ID, Planet>,
+    planet_comms: Rc<RefCell<PlanetComms>>,
+    orchestrator_comms: Rc<RefCell<OrchestratorComms>>,
 }
 
 impl Memory {
-    fn new() -> Self {
-        Self { map: HashMap::new(), weights: HashMap::new() }
+    pub fn new(current: ID, orchestrator_comms: Rc<RefCell<OrchestratorComms>>, planet_comms: Rc<RefCell<PlanetComms>>) -> Self {
+        Self { current, map: HashMap::new(), weights: HashMap::new(), planet_comms: planet_comms.clone(), orchestrator_comms: orchestrator_comms.clone()}
     }
-
+    pub fn get_current_id(&self) -> ID {
+        self.current
+    }
+    pub(crate) fn override_current_id(&mut self, id: ID){
+        self.current = id;
+    }
     fn insert_planet(&mut self, id: ID) {
         self.map.insert(id, Planet::new(id));
         self.weights.insert(id, HashMap::new());
     }
 
-    fn forget_planet(&mut self, id: ID) {
-        //TODO use width-first queueing (no repeats) on on planets in way defined below, then update ex-weight in order of addition to the queue
+    fn forget_planet(&mut self, id: &ID) {
         //Planets with a weight greater than the neighbour that called them, recursively
         let mut update_queue = VecDeque::new(); //Non-repeating queue of all planets that have had any of their weights deleted, for updating
-        let mut touched_update = HashSet::new();
-        let mut weights_to_remove:Vec<(ID, ResourceType)> = Vec::new();
+        let mut touched_update:HashSet<ID> = HashSet::new();
+        let mut weights_to_remove: Vec<(ID, AnyResource)> = Vec::new();
 
-        touched_update.insert(id); //Prevents later from updating the dead planet again
+        touched_update.insert(id.clone()); //Prevents later from updating the dead planet again
 
         //Weight dependencies propagate upwards, so they must be uprooted
-        for i in self.weights.get(&id).unwrap().keys() { //Repeat for all elements the planet had weights for
-            let mut handle_queue = VecDeque::new(); //Non-repeating queue of all planets that have a weight dependent on the deleted planet
-            let mut touched = HashSet::new();
+        {for i in self.weights.get(&id).unwrap().keys() { //Repeat for all elements the planet had weights for
+            let mut handle_queue: VecDeque<ID> = VecDeque::new(); //Non-repeating queue of all planets that have a weight dependent on the deleted planet
+            let mut touched: HashSet<ID> = HashSet::new();
 
-            handle_queue.push_back(id);
-            touched.insert(id);
+            handle_queue.push_back(id.clone());
+            touched.insert(id.clone());
 
             while !handle_queue.is_empty() {
                 let current = handle_queue.pop_front().unwrap();
@@ -105,15 +169,16 @@ impl Memory {
                         update_queue.push_back(current);
                     }
 
-                    weights_to_remove.push((current, *i));
+                    weights_to_remove.push((current.clone(), i.clone()));
 
                     if let Some(current_weight) = self.weights.get(&current).unwrap().get(i) {
-                        for ii in self.map.get(&current).unwrap().adj.iter() {
-                            if !touched.contains(ii) {
-                                if let Some(other_weight) = self.weights.get(ii).unwrap().get(i) {
+                        let temp = self.map.get(&current).unwrap().adj.clone();
+                        for ii in temp {
+                            if !touched.contains(&ii) {
+                                if let Some(other_weight) = self.weights.get(&ii).unwrap().get(i) {
                                     if current_weight > other_weight {
-                                        handle_queue.push_back(*ii);
-                                        touched.insert(*ii);
+                                        handle_queue.push_back(ii);
+                                        touched.insert(ii);
                                     }
                                 }
                             }
@@ -121,19 +186,22 @@ impl Memory {
                     }
                 }
             }
+        }}
+        {
+            for (idr, whr) in weights_to_remove {
+                self.weights.get_mut(&idr).unwrap().remove(&whr);
+            }
         }
 
-        for (idr, whr) in weights_to_remove {
-            self.weights.get_mut(&idr).unwrap().remove(&whr);
-        }
-
-        self.weights.remove(&id);
+        {self.weights.remove(&id); }
 
         //Remove forgotten planet from its adjacencies
-        if let Some(temp) = self.map.remove(&id) {
+        {
+            let Some(temp) = self.map.remove(&id) else { panic!("How are you forgetting a planet that doesn't exist?") };
+
             for i in temp.adj {
                 for ii in 0..self.map.get(&i).unwrap().adj.len() {
-                    if self.map.get(&i).unwrap().adj[ii] == id {
+                    if self.map.get(&i).unwrap().adj[ii] == *id {
                         self.map.get_mut(&i).unwrap().adj.remove(ii);
                     }
                 }
@@ -147,29 +215,41 @@ impl Memory {
         //From here on all weights should be guaranteed to be valid within Memory (but not necessarily really! you find out when you try and move there)
     }
 
-    fn explore(&mut self, id: &ID) {
-        //TODO include comms to get the resources of the planet, and adjacencies
-
+    fn explore(&mut self) {
         let mut newAdjs: Vec<ID> = Vec::new();
+
+        newAdjs = self.orchestrator_comms.borrow().get_adjs();
 
         for i in newAdjs.iter() {
             if !self.map.contains_key(i) {
                 self.map.insert(*i, Planet::new(*i));
             }
         }
-        self.map.get_mut(id).unwrap().adj.append(&mut newAdjs);
 
-        let mut prods: HashSet<ResourceType> = HashSet::new();
-        self.map.get_mut(id).unwrap().explored(PlanetContent::new(prods.clone()));
+        self.map.get_mut(&self.current).unwrap().adj.append(&mut newAdjs);
+
+        let mut prods: HashSet<AnyResource> = HashSet::new();
+
+        for i in self.planet_comms.borrow().get_prods() {
+            prods.insert(i);
+        }
+        self.map.get_mut(&self.current).unwrap().explored(PlanetContent::new(prods.clone()));
 
         for i in prods {
-            self.update_resource(id, i, 0); //All resources it produces have distance zero
+            self.update_resource(&self.current.clone(), i, 0); //All resources it produces have distance zero
         }
-
-        self.update_planet(id);
+        self.update_planet(&self.current.clone());
     }
 
-    fn get_dist(&mut self, current_planet: &ID, resource: &ResourceType) -> Option<i32> {
+    fn dist_from_here(&self, resource: &AnyResource) -> Option<i32> {
+        if let Some(dist) = self.weights.get(&self.current).unwrap().get(resource) {
+            Some(dist.clone())
+        } else {
+            None
+        }
+    }
+
+    fn get_dist(&mut self, current_planet: &ID, resource: &AnyResource) -> Option<i32> {
         self.update_planet(current_planet);
         if let Some(dist) = self.weights.get(current_planet).unwrap().get(resource) {
             Some(dist.clone())
@@ -179,21 +259,21 @@ impl Memory {
     }
 
     fn update_planet(&mut self, id: &ID) {
-        fn update_weights(W1: &HashMap<ResourceType, i32>, W2: &mut HashMap<ResourceType, i32>) {
+        fn update_weights(W1: &HashMap<AnyResource, i32>, W2: &mut HashMap<AnyResource, i32>) {
             for i in W1.keys() {
                 match (W1.get(i), W2.get(i)) {
                     (None, _) => { /*Nothing to do here, should be unreachable*/ },
-                    (Some(w), None) => { W2.insert(*i, w + 1); },
+                    (Some(w), None) => { W2.insert(i.clone(), w + 1); },
                     (Some(w1), Some(w2)) => {
                         if w1 + 1 < *w2 {
-                            W2.insert(*i, w1 + 1);
+                            W2.insert(i.clone(), w1 + 1);
                         }
                     },
                 }
             }
         }
 
-        let mut newWeights: HashMap<ResourceType, i32> = HashMap::new();
+        let mut newWeights: HashMap<AnyResource, i32> = HashMap::new();
         for i in self.map.get(id).unwrap().adj.iter() {
             match self.weights.get(i) {
                 None => { /*Nothing to do*/ },
@@ -203,19 +283,19 @@ impl Memory {
 
         //Set weights of locally-produced resources to zero
         for i in self.map.get(id).unwrap().cont.get_content().unwrap().iter() {
-            newWeights.insert(*i, 0);
+            newWeights.insert(i.clone(), 0);
         }
 
         //Override old weights
         self.weights.insert(id.clone(), newWeights);
     }
 
-    fn update_resource(&mut self, id: &ID, resource: ResourceType, dist: i32) {
+    fn update_resource(&mut self, id: &ID, resource: AnyResource, dist: i32) {
         self.weights.get_mut(id).unwrap().insert(resource, dist);
     }
 
 
-    fn next_step (&mut self, start: &ID, what: &ResourceType) -> Option<ID> { //Wish I could've made this a closure inside path_sanity, but rust doesn't like the self borrows
+    fn next_step (&mut self, start: &ID, what: &AnyResource) -> Option<ID> { //Wish I could've made this a closure inside path_sanity, but rust doesn't like the self borrows
         let mut foundID = None;
         match self.get_dist(start, what) { //Updates the planet
             Some(dist) => {
@@ -236,7 +316,7 @@ impl Memory {
     }
 
 
-    fn path_sanity(&mut self, start: &ID, what: &ResourceType) -> Option<Path> {
+    pub fn path_sanity(&mut self, start: &ID, what: &AnyResource) -> Option<Path> {
         enum PathResult {
             None,
             Arrived,
@@ -353,5 +433,96 @@ impl Memory {
                 None
             }
         }
+    }
+}
+
+pub struct Thrusters {
+    pub memory:Memory,
+    orchestrator_comms: Rc<RefCell<OrchestratorComms>>,
+}
+
+impl Thrusters {
+    pub fn new(memory: Memory, orchestrator_comms: Rc<RefCell<OrchestratorComms>>) -> Self {
+        Self {
+            memory,
+            orchestrator_comms: orchestrator_comms.clone()
+        }
+    }
+    
+    pub fn make_path(&mut self, what: AnyResource) -> Option<Path> {
+        self.memory.path_sanity(&self.memory.current.clone(), &what)
+    }
+    
+    fn move_to (&mut self, what: AnyResource) -> Result<(i32), (i32)> {
+
+        if let Some(path) = self.memory.path_sanity(&self.memory.current.clone(), &what) {
+            //Found a path
+            let mut counter = 0;
+            for i in path {
+                if self.orchestrator_comms.borrow().request_move(i).is_err() {
+                    //Move failed
+                    return Err(counter)
+                } else {
+                    counter += 1;
+                }
+            }
+            Ok(counter)
+        } else {
+            self.explore(what)
+        }
+    }
+    
+    fn move_adj(&mut self, id: ID) -> Result<(), ()>{
+        for i in 0..self.memory.map.get(&self.memory.current).unwrap().adj.len() {
+            if self.memory.map.get(&self.memory.current).unwrap().adj[i] == id {
+                if self.orchestrator_comms.borrow().request_move(id).is_err() {
+                    self.memory.forget_planet(&id);
+                    return Err(());
+                } else {
+                    return Ok(());
+                }
+            }
+        }
+        Err(())
+    }
+
+    fn explore (&mut self, what: AnyResource) -> Result<i32, i32> {
+        //Explore until finding the requested resource, then return the amount of movements done
+        let mut counter:i32 = 0;
+        
+        while self.memory.dist_from_here(&what).is_none() && counter <= (EXPECTED_RANDOM_COST * 2) as i32 {
+            counter += 1;
+            let mut found = None;
+            let adjs = self.memory.map.get(&self.memory.get_current_id()).unwrap().adj.clone();
+            for i in adjs.iter() {
+                if found.is_none() {
+                    match self.memory.map.get(i).unwrap().cont {
+                        PlanetStatus::Unexplored => {
+                            found = Some(i);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if let Some(found) = found {
+                if self.orchestrator_comms.borrow().request_move(found.clone()).is_ok() {
+                    //If new planet, explore, else move failed
+                    self.memory.explore();
+                } else {
+                    self.memory.forget_planet(found);
+                    return Err((counter));
+                }
+            } else {
+                let next_step = (rand::random::<i32>() % adjs.len() as i32) as usize; //Pseudo-random to guarantee no infinite loops
+
+                if self.orchestrator_comms.borrow().request_move(self.memory.map.get(&self.memory.current.clone()).unwrap().adj[next_step]).is_err() {
+                    //request_move failed
+                    let what = self.memory.map.get(&self.memory.current.clone()).unwrap().adj[next_step];
+                    self.memory.forget_planet(&what);
+                    return Err(counter);
+                }
+            }
+        }
+        Ok(counter)
     }
 }
