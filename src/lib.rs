@@ -4,15 +4,15 @@ mod items;
 mod decisionmaking;
 
 use std::cell::RefCell;
-
 use std::rc::Rc;
+
 use crate::communication::{OrchestratorComms, PlanetComms};
 use crate::items::Inventory;
 use crate::movement::Memory;
 use crate::movement::Thrusters;
 use crate::decisionmaking::Brain;
 
-use explorer_common::{Bag, BagContent, Explorer};
+use explorer_common::{Bag, BagContent, Explorer, AiReturn};
 
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
@@ -30,7 +30,8 @@ struct LazyBoone {
 pub enum InterruptOrder {
     None,
     Reset,
-    Stop
+    Stop,
+    Die
 }
 
 impl PartialEq for InterruptOrder {
@@ -70,25 +71,30 @@ impl Explorer for LazyBoone {
             inventory
         }
     }
-    fn explorer_ai(&mut self) -> bool {
+    fn explorer_ai(&mut self) -> AiReturn {
         log::trace!("LazyBoone: Explorer_AI ran for a tick");
-        if self.is_auto {
-            self.brain.populate_plans();
-            let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
-            match order {
-                Ok(()) => {}
-                Err(InterruptOrder::None) => {},
-                Err(InterruptOrder::Reset) => {
-                    log::trace!("LazyBoone: Resetting command propagated at head");
-                    self.reset();
-                },
-                Err(InterruptOrder::Stop) => {
-                    log::trace!("LazyBoone: Stopping command propagated at head");
-                    self.is_auto=false;
-                },
+        self.brain.populate_plans();
+        let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
+        match order {
+            Ok(()) => {
+                AiReturn::Stop //TODO change for correct one
+            }
+            Err(InterruptOrder::None) => {
+                AiReturn::Stop //TODO change for correct one
+            },
+            Err(InterruptOrder::Reset) => {
+                log::trace!("LazyBoone: Resetting command propagated at head");
+                AiReturn::Reset
+            },
+            Err(InterruptOrder::Stop) => {
+                log::trace!("LazyBoone: Stopping command propagated at head");
+                AiReturn::Stop
+            },
+            Err(InterruptOrder::Die) => {
+                log::debug!("LazyBoone: Kill command propagated at head");
+                AiReturn::Kill
             }
         }
-        true
     }
 
     fn get_id(&self) -> ID {

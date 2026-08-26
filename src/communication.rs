@@ -73,6 +73,10 @@ impl OrchestratorComms {
                             log::trace!("LazyBoone: Received unexpected stop, but keeping calm");
                             Err(InterruptOrder::Stop)
                         }
+                        OrchestratorToExplorer::KillExplorer => {
+                            log::trace!("LazyBoone: Received unexpected kill, but keeping calm");
+                            Err(InterruptOrder::Die)
+                        },
                         _ => {panic!("Orchestrator sent something wrong")}
                     }
                 }
@@ -86,11 +90,11 @@ impl OrchestratorComms {
         log::trace!("LazyBoone: Requesting motion");
         if self.channel.send(ExplorerToOrchestrator::TravelToPlanetRequest {explorer_id: self.id, current_planet_id: self.current.borrow().clone(), dst_planet_id: dest}).is_ok() {
             match self.channel.recv() {
-                Ok(OrchestratorToExplorer::MoveToPlanet {sender_to_new_planet: A, planet_id: B}) => {
-                    if A.is_none() {
+                Ok(OrchestratorToExplorer::MoveToPlanet {sender_to_new_planet: a, planet_id: b}) => {
+                    if a.is_none() {
                         Err(InterruptOrder::None)
                     } else {
-                        Ok((A.unwrap(), B))
+                        Ok((a.unwrap(), b))
                     }
                 },
                 Ok(OrchestratorToExplorer::ResetExplorerAI) => {
@@ -100,6 +104,10 @@ impl OrchestratorComms {
                 Ok(OrchestratorToExplorer::StopExplorerAI) => {
                     log::trace!("LazyBoone: Received unexpected stop, but keeping calm");
                     Err(InterruptOrder::Stop)
+                },
+                Ok(OrchestratorToExplorer::KillExplorer) => {
+                    log::trace!("LazyBoone: Received unexpected kill, but keeping calm");
+                    Err(InterruptOrder::Die)
                 },
                 _ => {panic!("Wrong reply received");}
             }
@@ -179,48 +187,48 @@ impl PlanetComms {
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {
-                    let (Some(A), Some(B)) = (bag.get_complex(Robot), bag.get_complex(Diamond))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::AIPartner(A.to_robot().unwrap(), B.to_diamond().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Robot), bag.get_complex(Diamond))else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::AIPartner(a.to_robot().unwrap(), b.to_diamond().unwrap())
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Diamond => {
                 if bag.has_resource(ResourceType::Basic(Carbon)) > 1 {
-                    let (Some(A), Some(B)) = (bag.get_basic(Carbon), bag.get_basic(Carbon))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Diamond(A.to_carbon().unwrap(), B.to_carbon().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(Carbon), bag.get_basic(Carbon))else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::Diamond(a.to_carbon().unwrap(), b.to_carbon().unwrap())
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Dolphin => {
                 if bag.has_resource(ResourceType::Complex(Life)) > 0 && bag.has_resource(ResourceType::Complex(Water)) > 0 {
-                    let (Some(A), Some(B)) = (bag.get_complex(Water), bag.get_complex(Life))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Dolphin(A.to_water().unwrap(), B.to_life().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_complex(Life))else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::Dolphin(a.to_water().unwrap(), b.to_life().unwrap())
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Robot => {
                 if bag.has_resource(ResourceType::Basic(BasicResourceType::Silicon)) > 0 && bag.has_resource(ResourceType::Complex(Life)) > 0 {
-                    let (Some(A), Some(B)) = (bag.get_basic(BasicResourceType::Silicon), bag.get_complex(Life)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Robot(A.to_silicon().unwrap(), B.to_life().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(BasicResourceType::Silicon), bag.get_complex(Life)) else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::Robot(a.to_silicon().unwrap(), b.to_life().unwrap())
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Life => {
                 if bag.has_resource(ResourceType::Complex(Water)) > 0 && bag.has_resource(ResourceType::Basic(Carbon)) > 0 {
-                    let (Some(A), Some(B)) = (bag.get_complex(Water), bag.get_basic(Carbon)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Life(A.to_water().unwrap(), B.to_carbon().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_basic(Carbon)) else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::Life(a.to_water().unwrap(), b.to_carbon().unwrap())
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Water => {
                 if bag.has_resource(ResourceType::Basic(Hydrogen)) > 0 && bag.has_resource(ResourceType::Basic(Oxygen)) > 0 {
-                    let (Some(A), Some(B)) = (bag.get_basic(Hydrogen), bag.get_basic(Oxygen)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Water(A.to_hydrogen().unwrap(), B.to_oxygen().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(Hydrogen), bag.get_basic(Oxygen)) else {panic!("This shouldn't happen")};
+                    ComplexResourceRequest::Water(a.to_hydrogen().unwrap(), b.to_oxygen().unwrap())
                 } else {
                     return None;
                 }
