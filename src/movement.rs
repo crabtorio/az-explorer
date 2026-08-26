@@ -7,6 +7,7 @@ use std::cell::RefCell;
 
 use crate::communication::{OrchestratorComms, PlanetComms};
 use crate::decisionmaking::EXPECTED_RANDOM_MOVE;
+use crate::InterruptOrder;
 
 enum PlanetStatus{
     Unexplored,
@@ -120,7 +121,7 @@ impl Into<ResourceType> for AnyResource {
 }
 
 pub struct Memory {
-    current: ID,
+    current: Rc<RefCell<ID>>,
     weights: HashMap<ID, HashMap<AnyResource, i32>>,
     map: HashMap<ID, Planet>,
     planet_comms: Rc<RefCell<PlanetComms>>,
@@ -128,21 +129,29 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn new(current: ID, orchestrator_comms: Rc<RefCell<OrchestratorComms>>, planet_comms: Rc<RefCell<PlanetComms>>) -> Self {
+    pub fn new(current: Rc<RefCell<ID>>, orchestrator_comms: Rc<RefCell<OrchestratorComms>>, planet_comms: Rc<RefCell<PlanetComms>>) -> Self {
         Self { current, map: HashMap::new(), weights: HashMap::new(), planet_comms: planet_comms.clone(), orchestrator_comms: orchestrator_comms.clone()}
     }
+
+    pub fn forget_all(&mut self) {
+        log::trace!("LazyBoone: Banged his head too hard");
+        self.weights.clear();
+        self.map.clear();
+    }
     pub fn get_current_id(&self) -> ID {
-        self.current
+        self.current.borrow().clone()
     }
     pub(crate) fn override_current_id(&mut self, id: ID){
-        self.current = id;
+        *self.current.borrow_mut() = id;
     }
     fn insert_planet(&mut self, id: ID) {
+        log::trace!("LazyBoone: Noticing a new planet, naming it {:?}", id);
         self.map.insert(id, Planet::new(id));
         self.weights.insert(id, HashMap::new());
     }
 
     fn forget_planet(&mut self, id: &ID) {
+        log::trace!("LazyBoone: Realizing on second thought planet {:?} is a silly place", id);
         //Planets with a weight greater than the neighbour that called them, recursively
         let mut update_queue = VecDeque::new(); //Non-repeating queue of all planets that have had any of their weights deleted, for updating
         let mut touched_update:HashSet<ID> = HashSet::new();
@@ -212,8 +221,14 @@ impl Memory {
         //From here on all weights should be guaranteed to be valid within Memory (but not necessarily really! you find out when you try and move there)
     }
 
-    fn explore(&mut self) {
-        let mut new_adjs = self.orchestrator_comms.borrow().get_adjs();
+    fn explore(&mut self) -> Result<(), InterruptOrder> {
+        log::trace!("LazyBoone: Annotating interesting sights");
+        let res = self.orchestrator_comms.borrow().get_adjs();
+        let now = self.current.borrow().clone();
+        if res.is_err() {
+            return Err(res.err().unwrap());
+        }
+        let mut new_adjs = res.ok().unwrap();
 
         for i in new_adjs.iter() {
             if !self.map.contains_key(i) {
@@ -221,23 +236,25 @@ impl Memory {
             }
         }
 
-        self.map.get_mut(&self.current).unwrap().adj.append(&mut new_adjs);
+        self.map.get_mut(&now).unwrap().adj.append(&mut new_adjs);
 
         let mut prods: HashSet<AnyResource> = HashSet::new();
 
         for i in self.planet_comms.borrow().get_prods() {
             prods.insert(i);
         }
-        self.map.get_mut(&self.current).unwrap().explored(PlanetContent::new(prods.clone()));
+        self.map.get_mut(&now).unwrap().explored(PlanetContent::new(prods.clone()));
 
         for i in prods {
-            self.update_resource(&self.current.clone(), i, 0); //All resources it produces have distance zero
+            self.update_resource(&now, i, 0); //All resources it produces have distance zero
         }
-        self.update_planet(&self.current.clone());
+        self.update_planet(&now);
+        Ok(())
     }
 
     fn dist_from_here(&self, resource: &AnyResource) -> Option<i32> {
-        if let Some(dist) = self.weights.get(&self.current).unwrap().get(resource) {
+        log::trace!("LazyBoone: Looking at the map");
+        if let Some(dist) = self.weights.get(&self.current.borrow()).unwrap().get(resource) {
             Some(dist.clone())
         } else {
             None
@@ -245,6 +262,7 @@ impl Memory {
     }
 
     fn get_dist(&mut self, current_planet: &ID, resource: &AnyResource) -> Option<i32> {
+        log::trace!("LazyBoone: Using the fancy compass");
         self.update_planet(current_planet);
         if let Some(dist) = self.weights.get(current_planet).unwrap().get(resource) {
             Some(dist.clone())
@@ -254,6 +272,7 @@ impl Memory {
     }
 
     fn update_planet(&mut self, id: &ID) {
+        log::trace!("LazyBoone: Inking new info");
         fn update_weights(W1: &HashMap<AnyResource, i32>, W2: &mut HashMap<AnyResource, i32>) {
             for i in W1.keys() {
                 match (W1.get(i), W2.get(i)) {
@@ -291,6 +310,7 @@ impl Memory {
 
 
     fn next_step (&mut self, start: &ID, what: &AnyResource) -> Option<ID> { //Wish I could've made this a closure inside path_sanity, but rust doesn't like the self borrows
+        log::trace!("LazyBoone: Finding the next planet to go");
         let mut foundID = None;
         match self.get_dist(start, what) { //Updates the planet
             Some(dist) => {
@@ -312,6 +332,7 @@ impl Memory {
 
 
     pub fn path_sanity(&mut self, start: &ID, what: &AnyResource) -> Option<Path> {
+        log::trace!("LazyBoone: Making sure he's not about to get lost");
         enum PathResult {
             None,
             Arrived,
@@ -445,18 +466,22 @@ impl Thrusters {
     }
     
     pub fn make_path(&mut self, what: AnyResource) -> Option<Path> {
-        self.memory.path_sanity(&self.memory.current.clone(), &what)
+        let now = self.memory.current.borrow().clone();
+        self.memory.path_sanity(&now, &what)
     }
     
-    pub fn move_to (&mut self, what: AnyResource) -> Result<i32, i32> {
-
-        if let Some(path) = self.memory.path_sanity(&self.memory.current.clone(), &what) {
+    pub fn move_to (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
+        log::trace!("LazyBoone: Firing up the engines to move");
+        let now = self.memory.current.borrow().clone();
+        if let Some(path) = self.memory.path_sanity(&now, &what) {
             //Found a path
             let mut counter = 0;
             for i in path {
-                if self.orchestrator_comms.borrow().request_move(i).is_err() {
+                let res = self.orchestrator_comms.borrow().request_move(i);
+                if res.is_err() {
                     //Move failed
-                    return Err(counter)
+                    let ord = res.err().unwrap();
+                    return Err((ord, counter))
                 } else {
                     counter += 1;
                 }
@@ -466,22 +491,9 @@ impl Thrusters {
             self.explore(what)
         }
     }
-    
-    pub fn move_adj(&mut self, id: ID) -> Result<(), ()>{
-        for i in 0..self.memory.map.get(&self.memory.current).unwrap().adj.len() {
-            if self.memory.map.get(&self.memory.current).unwrap().adj[i] == id {
-                if self.orchestrator_comms.borrow().request_move(id).is_err() {
-                    self.memory.forget_planet(&id);
-                    return Err(());
-                } else {
-                    return Ok(());
-                }
-            }
-        }
-        Err(())
-    }
 
-    fn explore (&mut self, what: AnyResource) -> Result<i32, i32> {
+    fn explore (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
+        log::trace!("LazyBoone: Exploing uncharted land");
         //Explore until finding the requested resource, then return the amount of movements done
         let mut counter:i32 = 0;
         
@@ -500,21 +512,27 @@ impl Thrusters {
                 }
             }
             if let Some(found) = found {
-                if self.orchestrator_comms.borrow().request_move(found.clone()).is_ok() {
+                let res = self.orchestrator_comms.borrow().request_move(found.clone());
+                return if res.is_ok() {
                     //If new planet, explore, else move failed
                     self.memory.explore();
+                    Ok(counter)
                 } else {
                     self.memory.forget_planet(found);
-                    return Err(counter);
+                    Err((res.err().unwrap(), counter - 1))
                 }
             } else {
                 let next_step = (rand::random::<i32>() % adjs.len() as i32) as usize; //Pseudo-random to guarantee no infinite loops
-
-                if self.orchestrator_comms.borrow().request_move(self.memory.map.get(&self.memory.current.clone()).unwrap().adj[next_step]).is_err() {
+                let now = self.memory.current.borrow().clone();
+                let res = self.orchestrator_comms.borrow().request_move(self.memory.map.get(&now).unwrap().adj[next_step]);
+                if res.is_err() {
                     //request_move failed
-                    let what = self.memory.map.get(&self.memory.current.clone()).unwrap().adj[next_step];
-                    self.memory.forget_planet(&what);
-                    return Err(counter);
+                    let res = res.err().unwrap();
+                    if res == InterruptOrder::None {
+                        let what = self.memory.map.get(&now).unwrap().adj[next_step];
+                        self.memory.forget_planet(&what);
+                    }
+                    return Err((res, counter));
                 }
             }
         }

@@ -4,6 +4,7 @@ mod items;
 mod decisionmaking;
 
 use std::cell::RefCell;
+
 use std::rc::Rc;
 use crate::communication::{OrchestratorComms, PlanetComms};
 use crate::items::Inventory;
@@ -23,21 +24,41 @@ struct LazyBoone {
     orchestrator_comms: Rc<RefCell<OrchestratorComms>>,
     planet_comms: Rc<RefCell<PlanetComms>>,
     inventory: Inventory,
-    thrusters: Thrusters
+    thrusters: Thrusters,
 }
+
+pub enum InterruptOrder {
+    None,
+    Reset,
+    Stop
+}
+
+impl PartialEq for InterruptOrder {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (InterruptOrder::None, InterruptOrder::None) => true,
+            (InterruptOrder::Reset, InterruptOrder::Reset) => true,
+            (InterruptOrder::Stop, InterruptOrder::Stop) => true,
+            _ => false,
+        }
+    }
+}
+
 impl Explorer for LazyBoone {
     fn new(
         id: ID,
         bag: Bag,
-        planet_id: ID,
+        digit_planet_id: ID,
         planet_channel: explorer_common::logged_channel::LoggedChannel<common_game::protocols::planet_explorer::ExplorerToPlanet, common_game::protocols::planet_explorer::PlanetToExplorer>,
         orchestrator_channel: explorer_common::logged_channel::LoggedChannel::<common_game::protocols::orchestrator_explorer::ExplorerToOrchestrator<BagContent>, common_game::protocols::orchestrator_explorer::OrchestratorToExplorer>
     ) -> Self {
+        log::trace!("Explorer: Calling 'New' on LazyBoone");
 
+        let planet_id = Rc::new(RefCell::new(digit_planet_id));
         let inventory = Inventory::new(bag);
-        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_id, planet_channel)));
-        let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id, planet_id, orchestrator_channel)));
-        let memory =  Memory::new(planet_id, orchestrator_comms.clone(), planet_comms.clone());
+        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_id.clone(), planet_channel)));
+        let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id, planet_id.clone(), orchestrator_channel)));
+        let memory =  Memory::new(planet_id.clone(), orchestrator_comms.clone(), planet_comms.clone());
 
         Self {
             id,
@@ -49,16 +70,25 @@ impl Explorer for LazyBoone {
             inventory
         }
     }
-    fn run(&mut self) {
-        log::info!("LazyBoone: Run");
-        loop {
-            self.try_recv_from_orchestrator_and_respond();
-
-            if self.is_auto {
-                self.brain.populate_plans();
-                self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
+    fn explorer_ai(&mut self) -> bool {
+        log::trace!("LazyBoone: Explorer_AI ran for a tick");
+        if self.is_auto {
+            self.brain.populate_plans();
+            let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
+            match order {
+                Ok(()) => {}
+                Err(InterruptOrder::None) => {},
+                Err(InterruptOrder::Reset) => {
+                    log::trace!("LazyBoone: Resetting command propagated at head");
+                    self.reset();
+                },
+                Err(InterruptOrder::Stop) => {
+                    log::trace!("LazyBoone: Stopping command propagated at head");
+                    self.is_auto=false;
+                },
             }
         }
+        true
     }
 
     fn get_id(&self) -> ID {
@@ -74,11 +104,7 @@ impl Explorer for LazyBoone {
     }
 
     fn set_planet_id(&mut self, id: ID) {
-        if self.thrusters.move_adj(id).is_ok() {
-            self.thrusters.memory.override_current_id(id);
-            self.planet_comms.borrow_mut().override_current_id(id);
-            self.orchestrator_comms.borrow_mut().override_current_id(id);
-        }
+        self.thrusters.memory.override_current_id(id);
     }
 
     fn get_auto_mode(&self) -> bool {
@@ -87,9 +113,11 @@ impl Explorer for LazyBoone {
 
     fn set_auto_mode(&mut self, auto_mode: bool) {
         self.is_auto = auto_mode;
-        if !auto_mode {
-            self.brain.clear_plans();
-        }
+    }
+
+    fn reset(&mut self) {
+        self.brain.reset();
+        self.thrusters.memory.forget_all();
     }
 
     fn get_planet_channel(&self) -> explorer_common::logged_channel::LoggedChannel<common_game::protocols::planet_explorer::ExplorerToPlanet, common_game::protocols::planet_explorer::PlanetToExplorer> {

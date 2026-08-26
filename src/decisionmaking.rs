@@ -7,6 +7,7 @@ use std::rc::Rc;
 use common_game::components::resource::{BasicResourceType,ComplexResourceType, GenericResource, ResourceType};
 
 use crate::communication::PlanetComms;
+use crate::InterruptOrder;
 use crate::items::Inventory;
 use crate::movement::{AnyResource, Memory, Thrusters};
 
@@ -129,6 +130,7 @@ struct Plan {
 
 impl Plan {
     fn new(what: ResourceType) -> Plan {
+        log::trace!("LazyBoone: Devising new devious plan, for resource {:?}", what);
 
         let mut prerequisites: HashMap<ResourceType, usize> = HashMap::new();
         match what {
@@ -168,6 +170,7 @@ impl Plan {
     }
 
     fn get_score(&self, memory: &mut Memory, inventory: &Inventory) -> Expectedscore {
+        log::trace!("LazyBoone: Doing some math to see if a plan is worth its while");
 
         let mut requirements_met = true;
         let keys = self.prerequisites.keys();
@@ -204,10 +207,12 @@ impl Brain {
         }
     }
     pub fn clear_plans(&mut self) {
+        log::trace!("LazyBoone: Realizing he could do better with his life");
         self.plans.clear();
     }
 
     pub fn reset(&mut self) {
+        log::trace!("LazyBoone: Thinking it's time for a new start");
         self.current_score = Score {s: 0};
         self.plans.clear();
     }
@@ -217,6 +222,8 @@ impl Brain {
     }
 
     fn best_plan(&self, memory: &mut Memory, inventory: &Inventory) -> Option<usize> {
+        log::trace!("LazyBoone: Making the bast of what he came up with");
+
         let mut best_score = None;
         let mut best_scorer = None;
         for i in 0..self.plans.len() {
@@ -229,7 +236,9 @@ impl Brain {
         best_scorer
     }
 
-    pub fn solve_best_plan(&mut self, thrusters: &mut Thrusters, inventory: &mut Inventory) {
+    pub fn solve_best_plan(&mut self, thrusters: &mut Thrusters, inventory: &mut Inventory) -> Result<(), InterruptOrder> {
+        log::trace!("LazyBoone: Walking the walk, doing the plan");
+
         let borrow_mem = &mut  thrusters.memory;
         let which = self.best_plan(borrow_mem, inventory);
         match which {
@@ -247,8 +256,10 @@ impl Brain {
                                     inventory.put_in_bag(GenericResource::BasicResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);
+                                    log::trace!("LazyBoone: Reaping what was sown");
                                 } else {
                                     //Item not got, plan is not deleted
+                                    log::trace!("LazyBoone: Feeling defeated but not dejected");
                                 }
 
                             },
@@ -257,20 +268,27 @@ impl Brain {
                                     inventory.put_in_bag(GenericResource::ComplexResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);
+                                    log::trace!("LazyBoone: Enjoying the spoils of victory");
                                 } else {
                                     //Item not got, plan is not deleted
+                                    log::trace!("LazyBoone: Renewing hunger for success");
                                 }
                             }
                         }
+                        Ok(())
                     },
-                    Err(cost) => {
+                    Err((ord, cost)) => {
+                        log::trace!("LazyBoone: Unexpected order passed by the brain");
                         self.current_score -= Score{s: cost};
+                        Err(ord)
                         //Plan not removed from Brain, no further action necessary
                     }
                 }
             }
             None => {
                 //Nothing to do
+                log::trace!("LazyBoone: Idling, loitering even");
+                Ok(())
             }
         }
     }
@@ -281,6 +299,7 @@ impl Brain {
 
     fn make_plan (&mut self, what: ResourceType) {
         let plan = Plan::new(what);
+        log::trace!("LazyBoone: Making sure bases will be covered, eventually");
         for (i, n) in plan.prerequisites.iter() { //For every prerequisite
             for _ in  0..*n { //Repeat requisite amount of times
                 self.make_plan(*i); //Recursively make the prerequisite plan
@@ -290,7 +309,9 @@ impl Brain {
     }
 
     pub fn populate_plans (&mut self) {
+        log::trace!("LazyBoone: Judging if some scheming is in order");
         if self.plan_count() <= MIN_PLANS_BEFORE_REPOP {
+            log::trace!("LazyBoone: It is");
             self.make_plan(ResourceType::Complex(ComplexResourceType::AIPartner));
         }
     }

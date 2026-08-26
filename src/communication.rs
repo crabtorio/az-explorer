@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::{cell::RefCell, rc::Rc};
 
 use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType, ResourceType};
 use common_game::components::resource::BasicResourceType::{Carbon, Hydrogen, Oxygen};
@@ -7,28 +8,29 @@ use common_game::protocols::orchestrator_explorer::{ExplorerToOrchestrator, Orch
 use common_game::protocols::planet_explorer::{ExplorerToPlanet, PlanetToExplorer};
 use common_game::utils::ID;
 
-use crossbeam_channel::{Receiver, Sender, SendError};
+use crossbeam_channel::{Receiver, Sender};
 
 use explorer_common::BagContent;
 use explorer_common::logged_channel::LoggedChannel;
-
+use crate::InterruptOrder;
 use crate::movement::AnyResource;
 use crate::items::Inventory;
 
 pub struct OrchestratorComms {
     id: ID,
-    current: ID,
+    current: Rc<RefCell<ID>>,
     channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>,
 }
 
 pub struct PlanetComms {
     id: ID,
-    current: ID,
+    current: Rc<RefCell<ID>>,
     channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>,
 }
 
 impl OrchestratorComms {
-    pub fn new(id: ID, current: ID,channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>) -> OrchestratorComms {
+    pub fn new(id: ID, current: Rc<RefCell<ID>>,channel: LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer>) -> OrchestratorComms {
+        log::trace!("LazyBoone: Creating OrchestratorComms");
         Self {
             id,
             current,
@@ -37,7 +39,7 @@ impl OrchestratorComms {
     }
     
     pub fn override_current_id(&mut self, id: ID) {
-        self.id = id;
+        *self.current.borrow_mut() = id;
     }
 
     pub fn get_channel(&mut self) -> LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer> {
@@ -51,8 +53,9 @@ impl OrchestratorComms {
     pub fn set_tx(&mut self, tx: Sender<ExplorerToOrchestrator<BagContent>>) {
         self.channel.set_sender(tx);
     }
-    pub fn get_adjs(&self) -> Vec<ID> {
-        if self.channel.send(ExplorerToOrchestrator::NeighborsRequest {explorer_id: self.id, current_planet_id: self.current }).is_ok() {
+    pub fn get_adjs(&self) -> Result<Vec<ID>, InterruptOrder> {
+        log::trace!("LazyBoone: Requesting adjs from orchestrator");
+        if self.channel.send(ExplorerToOrchestrator::NeighborsRequest {explorer_id: self.id, current_planet_id: self.current.borrow().clone() }).is_ok() {
             match self.channel.recv() {
                 Err(_) => {
                     panic!("Something went wrong when receiving planet neighbours request");
@@ -60,7 +63,15 @@ impl OrchestratorComms {
                 Ok(something) => {
                     match something {
                         OrchestratorToExplorer::NeighborsResponse{neighbors} => {
-                            neighbors
+                            Ok(neighbors)
+                        }
+                        OrchestratorToExplorer::ResetExplorerAI => {
+                            log::trace!("LazyBoone: Received unexpected reset, but keeping calm");
+                            Err(InterruptOrder::Reset)
+                        },
+                        OrchestratorToExplorer::StopExplorerAI => {
+                            log::trace!("LazyBoone: Received unexpected stop, but keeping calm");
+                            Err(InterruptOrder::Stop)
                         }
                         _ => {panic!("Orchestrator sent something wrong")}
                     }
@@ -71,13 +82,36 @@ impl OrchestratorComms {
         }
     }
 
-    pub fn request_move(&self, dest: ID) -> Result<(), SendError<ExplorerToOrchestrator<BagContent>>> {
-        self.channel.send(ExplorerToOrchestrator::TravelToPlanetRequest {explorer_id: self.id, current_planet_id: self.current, dst_planet_id: dest})
+    pub fn request_move(&self, dest: ID) -> Result<(Sender<ExplorerToPlanet>, ID), InterruptOrder> {
+        log::trace!("LazyBoone: Requesting motion");
+        if self.channel.send(ExplorerToOrchestrator::TravelToPlanetRequest {explorer_id: self.id, current_planet_id: self.current.borrow().clone(), dst_planet_id: dest}).is_ok() {
+            match self.channel.recv() {
+                Ok(OrchestratorToExplorer::MoveToPlanet {sender_to_new_planet: A, planet_id: B}) => {
+                    if A.is_none() {
+                        Err(InterruptOrder::None)
+                    } else {
+                        Ok((A.unwrap(), B))
+                    }
+                },
+                Ok(OrchestratorToExplorer::ResetExplorerAI) => {
+                    log::trace!("LazyBoone: Received unexpected reset, but keeping calm");
+                    Err(InterruptOrder::Reset)
+                },
+                Ok(OrchestratorToExplorer::StopExplorerAI) => {
+                    log::trace!("LazyBoone: Received unexpected stop, but keeping calm");
+                    Err(InterruptOrder::Stop)
+                },
+                _ => {panic!("Wrong reply received");}
+            }
+        } else {
+            panic!("Can't send the explorer move request");
+        }
     }
 }
 
 impl PlanetComms {
-    pub fn new(id: ID, current:ID, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>) -> PlanetComms {
+    pub fn new(id: ID, current:Rc<RefCell<ID>>, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>) -> PlanetComms {
+        log::trace!("LazyBoone: Creating PlanetComms");
         Self {
             id,
             current,
@@ -86,7 +120,7 @@ impl PlanetComms {
     }
 
     pub fn override_current_id(&mut self, id: ID) {
-        self.id = id;
+        *self.current.borrow_mut() = id;
     }
     pub fn get_channel(&mut self) -> LoggedChannel<ExplorerToPlanet, PlanetToExplorer> {
         self.channel.clone()
@@ -100,6 +134,7 @@ impl PlanetComms {
         self.channel.set_sender(tx);
     }
     pub fn get_prods(&self) -> HashSet<AnyResource> {
+        log::trace!("LazyBoone: Requesting productions from planet");
         let mut result: HashSet<AnyResource> = HashSet::new();
         if self.channel.send(ExplorerToPlanet::SupportedResourceRequest{ explorer_id: self.id }).is_ok() {
             if let Ok(PlanetToExplorer::SupportedResourceResponse {resource_list}) = self.channel.recv() {
@@ -127,6 +162,7 @@ impl PlanetComms {
     }
 
     pub fn try_get(&self, what: BasicResourceType) -> Option<BasicResource>  {
+        log::trace!("LazyBoone: Requesting basic resource from planet");
         if self.channel.send(ExplorerToPlanet::GenerateResourceRequest {explorer_id: self.id, resource: what}).is_ok() {
             if let Ok(PlanetToExplorer::GenerateResourceResponse {resource}) = self.channel.recv() {
                 resource
@@ -139,6 +175,7 @@ impl PlanetComms {
     }
 
     pub fn try_craft(&self, bag: &mut Inventory, what: ComplexResourceType) -> Option<ComplexResource> {
+        log::trace!("LazyBoone: Requesting complex resource from planet");
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {

@@ -84,7 +84,7 @@ dependencies = [
 [[package]]
 name = "explorer-common"
 version = "0.1.0"
-source = "git+https://github.com/crabtorio/explorer-common#c4dd440ccb085080b9cce66cea65d2d2f5373660"
+source = "git+https://github.com/crabtorio/explorer-common#d57997c1c59505fd03c96cd954b9e8568a53af28"
 dependencies = [
  "common-game",
  "crossbeam-channel",
