@@ -1,4 +1,3 @@
-#![allow(non_snake_case)]
 mod communication;
 mod movement;
 mod items;
@@ -17,7 +16,6 @@ use explorer_common::{Bag, BagContent, Explorer};
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
 
-#[allow(dead_code)]
 struct LazyBoone {
     id: ID,
     is_auto: bool,

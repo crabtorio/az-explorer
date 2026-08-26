@@ -1,5 +1,5 @@
 [package]
-name = "AZ-Explorer"
+name = "az-explorer"
 version = "0.1.0"
 edition = "2024"
 
