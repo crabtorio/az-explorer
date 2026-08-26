@@ -1,11 +1,18 @@
+use std::cmp::{Ordering, PartialOrd};
 use std::collections::{HashMap, VecDeque};
-use std::ops::{Add, AddAssign};
-use common_game::components::resource::{BasicResourceType, ComplexResourceType, ResourceType};
-use common_game::components::resource::ResourceType::Complex;
-use crate::movement::{AnyResource, Memory, EXPECTED_RANDOM_COST};
+use std::ops::{Add, AddAssign, SubAssign};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use common_game::components::resource::{BasicResourceType,ComplexResourceType, GenericResource, ResourceType};
+
+use crate::communication::PlanetComms;
+use crate::items::Inventory;
+use crate::movement::{AnyResource, Memory, Thrusters};
 
 const MOVEMENT_COST: i32 = -1;
-const EXPLORATION_COST: i32 = EXPECTED_RANDOM_COST as i32 * MOVEMENT_COST;
+pub const EXPECTED_RANDOM_MOVE: usize = 15;
+const EXPLORATION_COST: i32 = EXPECTED_RANDOM_MOVE as i32 * MOVEMENT_COST;
 const ITEM_MULT: i32 = 5;
 const BASIC_VALUE: i32 = 1 * ITEM_MULT;
 const COMPLEXITY_OFFSET: i32 = 1 * ITEM_MULT;
@@ -16,11 +23,18 @@ const DOLPHIN_VALUE: i32 = LIFE_VALUE + BASIC_VALUE + COMPLEXITY_OFFSET;
 const ROBOT_VALUE: i32 = LIFE_VALUE + BASIC_VALUE + COMPLEXITY_OFFSET;
 const AIPARTNER_VALUE: i32 = ROBOT_VALUE + DIAMOND_VALUE + COMPLEXITY_OFFSET;
 
+const MIN_PLANS_BEFORE_REPOP: usize = 3;
 struct Score {s: i32}
 
 impl AddAssign for Score {
     fn add_assign(&mut self, rhs: Self) {
         self.s += rhs.s;
+    }
+}
+
+impl SubAssign for Score {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.s -= rhs.s;
     }
 }
 
@@ -41,6 +55,24 @@ impl Add for Expectedscore {
 
     fn add(self, rhs: Self) -> Self::Output {
         Expectedscore{s: self.s + rhs.s}
+    }
+}
+
+impl PartialEq<Self> for Expectedscore {
+    fn eq(&self, other: &Self) -> bool {
+        self.s == other.s
+    }
+}
+
+impl PartialOrd for Expectedscore {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.s.partial_cmp(&other.s)
+    }
+}
+
+impl Clone for Expectedscore {
+    fn clone(&self) -> Self {
+        Expectedscore{s: self.s}
     }
 }
 
@@ -84,8 +116,8 @@ impl Actions {
 impl Clone for Actions {
     fn clone(&self) -> Self {
         match self {
-            Actions::Grab(resource) => Actions::Grab(resource.clone()),
-            Actions::Craft(resource) => Actions::Craft(resource.clone()),
+            Actions::Grab(resource) => Actions::Grab(*resource),
+            Actions::Craft(resource) => Actions::Craft(*resource),
         }
     }
 }
@@ -135,27 +167,40 @@ impl Plan {
         }
     }
 
-    fn get_score(&self, memory: &mut Memory) -> Expectedscore {
-        let item_score = self.action.get_expected_score();
-        let move_path = memory.path_sanity(&memory.get_current_id(), &self.action.get_resource());
-        let move_cost =  match (move_path) {
-            None => {Expectedscore::new(EXPLORATION_COST)},
-            Some(p) => {Expectedscore::new(p.len() as i32 * MOVEMENT_COST)}
-        };
-        item_score + move_cost        
+    fn get_score(&self, memory: &mut Memory, inventory: &Inventory) -> Expectedscore {
+
+        let mut requirements_met = true;
+        let keys = self.prerequisites.keys();
+        for i in keys {
+            requirements_met = (*self.prerequisites.get(i).unwrap() <= inventory.has_resource(*i)) && requirements_met; //Only give points if the prerequisites are met
+        }
+
+        if requirements_met {
+            let item_score = self.action.get_expected_score();
+            let move_path = memory.path_sanity(&memory.get_current_id(), &self.action.get_resource());
+            let move_cost = match move_path {
+                None => { Expectedscore::new(EXPLORATION_COST) },
+                Some(p) => { Expectedscore::new(p.len() as i32 * MOVEMENT_COST) }
+            };
+            item_score + move_cost
+        } else {
+            Expectedscore::new(0)
+        }
     }
 }
 
 pub struct Brain {
     current_score: Score,
     plans: VecDeque<Plan>,
+    planet_comms: Rc<RefCell<PlanetComms>>
 }
 
 impl Brain {
-    pub fn new() -> Brain {
+    pub fn new(planet_comms: Rc<RefCell<PlanetComms>>) -> Brain {
         Self {
             current_score: Score {s: 0},
             plans: VecDeque::new(),
+            planet_comms
         }
     }
     pub fn clear_plans(&mut self) {
@@ -171,10 +216,82 @@ impl Brain {
         self.current_score += other;
     }
 
+    fn best_plan(&self, memory: &mut Memory, inventory: &Inventory) -> Option<usize> {
+        let mut best_score = None;
+        let mut best_scorer = None;
+        for i in 0..self.plans.len() {
+            let score = self.plans[i].get_score(memory, inventory);
+            if best_score.is_none() || score > best_score.clone().unwrap() { //The or short circuiting protects the unwrap
+                best_scorer = Some(i);
+                best_score = Some(score);
+            }
+        }
+        best_scorer
+    }
 
-    //TODO verify plan result and add score accordingly
-    //TODO generate new plans, one very time a plan is concluded (successfully or not).
-    //TODO choose best plan, only among those whose necessary requirements to work are met
-    //TODO execute plans
-    //TODO instead of the move into grab/craft plan, do cost calculation every time best plan is chosen assuming motion
+    pub fn solve_best_plan(&mut self, thrusters: &mut Thrusters, inventory: &mut Inventory) {
+        let borrow_mem = &mut  thrusters.memory;
+        let which = self.best_plan(borrow_mem, inventory);
+        match which {
+            Some(indx) => {
+                let plan = self.plans.get(indx).unwrap();
+                let resource = plan.action.get_resource();
+                let res = thrusters.move_to(resource.clone());
+                match res {
+                    Ok(cost) => {
+                        self.current_score -= Score{s: cost};
+                        //We now try to get the item
+                        match resource.into() {
+                            ResourceType::Basic(Gennable) => {
+                                if let Some(res) = self.planet_comms.borrow().try_get(Gennable) {
+                                    inventory.put_in_bag(GenericResource::BasicResources(res));
+                                    self.current_score += plan.action.get_expected_score().to_score();
+                                    self.plans.remove(indx);
+                                } else {
+                                    //Item not got, plan is not deleted
+                                }
+
+                            },
+                            ResourceType::Complex(Craftable) => {
+                                if let Some(res) = self.planet_comms.borrow().try_craft(inventory, Craftable) {
+                                    inventory.put_in_bag(GenericResource::ComplexResources(res));
+                                    self.current_score += plan.action.get_expected_score().to_score();
+                                    self.plans.remove(indx);
+                                } else {
+                                    //Item not got, plan is not deleted
+                                }
+                            }
+                        }
+                    },
+                    Err(cost) => {
+                        self.current_score -= Score{s: cost};
+                        //Plan not removed from Brain, no further action necessary
+                    }
+                }
+            }
+            None => {
+                //Nothing to do
+            }
+        }
+    }
+
+    fn plan_count(&self) -> usize {
+        self.plans.len()
+    }
+
+    fn make_plan (&mut self, what: ResourceType) {
+        let plan = Plan::new(what);
+        for (i, n) in plan.prerequisites.iter() { //For every prerequisite
+            for _ in  0..*n { //Repeat requisite amount of times
+                self.make_plan(*i); //Recursively make the prerequisite plan
+            }
+        }
+        self.plans.push_back(plan); //Commit the created plans
+    }
+
+    pub fn populate_plans (&mut self) {
+        if self.plan_count() <= MIN_PLANS_BEFORE_REPOP {
+            self.make_plan(ResourceType::Complex(ComplexResourceType::AIPartner));
+        }
+    }
 }

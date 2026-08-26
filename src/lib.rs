@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 mod communication;
 mod movement;
 mod items;
@@ -16,6 +17,7 @@ use explorer_common::{Bag, BagContent, Explorer};
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
 
+#[allow(dead_code)]
 struct LazyBoone {
     id: ID,
     is_auto: bool,
@@ -35,14 +37,14 @@ impl Explorer for LazyBoone {
     ) -> Self {
 
         let inventory = Inventory::new(bag);
-        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id.clone(), planet_id.clone(), planet_channel)));
-        let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id.clone(), planet_id.clone(), orchestrator_channel)));
+        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_id, planet_channel)));
+        let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id, planet_id, orchestrator_channel)));
         let memory =  Memory::new(planet_id, orchestrator_comms.clone(), planet_comms.clone());
 
         Self {
             id,
             is_auto: false,
-            brain: Brain::new(),
+            brain: Brain::new(planet_comms.clone()),
             orchestrator_comms: orchestrator_comms.clone(),
             planet_comms: planet_comms.clone(),
             thrusters: Thrusters::new(memory, orchestrator_comms.clone()),
@@ -50,11 +52,19 @@ impl Explorer for LazyBoone {
         }
     }
     fn run(&mut self) {
-        //TODO make a run
+        log::info!("LazyBoone: Run");
+        loop {
+            self.try_recv_from_orchestrator_and_respond();
+
+            if self.is_auto {
+                self.brain.populate_plans();
+                self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
+            }
+        }
     }
 
     fn get_id(&self) -> ID {
-        self.id.clone()
+        self.id
     }
 
     fn get_bag(&mut self) -> &mut Bag {
@@ -66,9 +76,11 @@ impl Explorer for LazyBoone {
     }
 
     fn set_planet_id(&mut self, id: ID) {
-        self.thrusters.memory.override_current_id(id);
-        self.planet_comms.borrow_mut().override_current_id(id);
-        self.orchestrator_comms.borrow_mut().override_current_id(id);
+        if self.thrusters.move_adj(id).is_ok() {
+            self.thrusters.memory.override_current_id(id);
+            self.planet_comms.borrow_mut().override_current_id(id);
+            self.orchestrator_comms.borrow_mut().override_current_id(id);
+        }
     }
 
     fn get_auto_mode(&self) -> bool {
@@ -77,7 +89,7 @@ impl Explorer for LazyBoone {
 
     fn set_auto_mode(&mut self, auto_mode: bool) {
         self.is_auto = auto_mode;
-        if (!auto_mode) {
+        if !auto_mode {
             self.brain.clear_plans();
         }
     }

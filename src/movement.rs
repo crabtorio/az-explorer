@@ -1,15 +1,12 @@
-pub const EXPECTED_RANDOM_COST: usize = 15;
-
-use std::any::Any;
-use std::cell::RefCell;
 use common_game::{utils::ID};
 use common_game::components::resource::{BasicResourceType, ComplexResourceType, ResourceType};
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
-use rand::{rng, Rng};
+use std::cell::RefCell;
 
 use crate::communication::{OrchestratorComms, PlanetComms};
+use crate::decisionmaking::EXPECTED_RANDOM_MOVE;
 
 enum PlanetStatus{
     Unexplored,
@@ -108,7 +105,7 @@ impl From<&ComplexResourceType> for AnyResource {
 impl Into<ResourceType> for AnyResource {
     fn into(self) -> ResourceType {
         match self {
-            AnyResource::Oxygen => {ResourceType::Basic(BasicResourceType::Oxygen)},
+            AnyResource::Oxygen => ResourceType::Basic(BasicResourceType::Oxygen),
             AnyResource::Hydrogen=> ResourceType::Basic(BasicResourceType::Hydrogen),
             AnyResource::Carbon=> ResourceType::Basic(BasicResourceType::Carbon),
             AnyResource::Silicon=> ResourceType::Basic(BasicResourceType::Silicon),
@@ -216,17 +213,15 @@ impl Memory {
     }
 
     fn explore(&mut self) {
-        let mut newAdjs: Vec<ID> = Vec::new();
+        let mut new_adjs = self.orchestrator_comms.borrow().get_adjs();
 
-        newAdjs = self.orchestrator_comms.borrow().get_adjs();
-
-        for i in newAdjs.iter() {
+        for i in new_adjs.iter() {
             if !self.map.contains_key(i) {
                 self.map.insert(*i, Planet::new(*i));
             }
         }
 
-        self.map.get_mut(&self.current).unwrap().adj.append(&mut newAdjs);
+        self.map.get_mut(&self.current).unwrap().adj.append(&mut new_adjs);
 
         let mut prods: HashSet<AnyResource> = HashSet::new();
 
@@ -303,7 +298,7 @@ impl Memory {
                 for i in self.map.get(start).unwrap().adj.iter() {
                     candidates.push(*i);
                 }
-                while (candidates.len() > 0) {
+                while candidates.len() > 0 {
                     let candidate = candidates.pop().unwrap();
                     if self.get_dist(&candidate, what) == Some(dist - 1) {
                         foundID = Some(candidate);
@@ -346,7 +341,7 @@ impl Memory {
 
                 explored.push(first_gen);
 
-                while (i <= EXPECTED_RANDOM_COST && !found_flag) {
+                while i <= EXPECTED_RANDOM_MOVE && !found_flag {
                     let mut new_gen: HashMap<ID, ID> = HashMap::new();
                     for ii in explored[i].keys() {
                         for iii in self.map.get(ii).unwrap().adj.iter() {
@@ -453,7 +448,7 @@ impl Thrusters {
         self.memory.path_sanity(&self.memory.current.clone(), &what)
     }
     
-    fn move_to (&mut self, what: AnyResource) -> Result<(i32), (i32)> {
+    pub fn move_to (&mut self, what: AnyResource) -> Result<i32, i32> {
 
         if let Some(path) = self.memory.path_sanity(&self.memory.current.clone(), &what) {
             //Found a path
@@ -472,7 +467,7 @@ impl Thrusters {
         }
     }
     
-    fn move_adj(&mut self, id: ID) -> Result<(), ()>{
+    pub fn move_adj(&mut self, id: ID) -> Result<(), ()>{
         for i in 0..self.memory.map.get(&self.memory.current).unwrap().adj.len() {
             if self.memory.map.get(&self.memory.current).unwrap().adj[i] == id {
                 if self.orchestrator_comms.borrow().request_move(id).is_err() {
@@ -490,7 +485,7 @@ impl Thrusters {
         //Explore until finding the requested resource, then return the amount of movements done
         let mut counter:i32 = 0;
         
-        while self.memory.dist_from_here(&what).is_none() && counter <= (EXPECTED_RANDOM_COST * 2) as i32 {
+        while self.memory.dist_from_here(&what).is_none() && counter <= (EXPECTED_RANDOM_MOVE * 2) as i32 {
             counter += 1;
             let mut found = None;
             let adjs = self.memory.map.get(&self.memory.get_current_id()).unwrap().adj.clone();
@@ -510,7 +505,7 @@ impl Thrusters {
                     self.memory.explore();
                 } else {
                     self.memory.forget_planet(found);
-                    return Err((counter));
+                    return Err(counter);
                 }
             } else {
                 let next_step = (rand::random::<i32>() % adjs.len() as i32) as usize; //Pseudo-random to guarantee no infinite loops

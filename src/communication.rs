@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-use std::rc::Rc;
-use std::cell::RefCell;
 
 use common_game::components::resource::{BasicResource, BasicResourceType, ComplexResource, ComplexResourceRequest, ComplexResourceType, ResourceType};
 use common_game::components::resource::BasicResourceType::{Carbon, Hydrogen, Oxygen};
@@ -12,11 +10,10 @@ use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender, SendError};
 
 use explorer_common::BagContent;
-use explorer_common::logged_channel::{LoggedChannel, ChannelError};
+use explorer_common::logged_channel::LoggedChannel;
 
 use crate::movement::AnyResource;
 use crate::items::Inventory;
-use crate::movement::AnyResource::Silicon;
 
 pub struct OrchestratorComms {
     id: ID,
@@ -57,11 +54,11 @@ impl OrchestratorComms {
     pub fn get_adjs(&self) -> Vec<ID> {
         if self.channel.send(ExplorerToOrchestrator::NeighborsRequest {explorer_id: self.id, current_planet_id: self.current }).is_ok() {
             match self.channel.recv() {
-                Err(RecvError) => {
+                Err(_) => {
                     panic!("Something went wrong when receiving planet neighbours request");
                 }
-                Ok(Something) => {
-                    match Something {
+                Ok(something) => {
+                    match something {
                         OrchestratorToExplorer::NeighborsResponse{neighbors} => {
                             neighbors
                         }
@@ -146,7 +143,7 @@ impl PlanetComms {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {
                     let (Some(A), Some(B)) = (bag.get_complex(Robot), bag.get_complex(Diamond))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::AIPartner{0:A.to_robot().unwrap(), 1:B.to_diamond().unwrap()}
+                    ComplexResourceRequest::AIPartner(A.to_robot().unwrap(), B.to_diamond().unwrap())
                 } else {
                     return None;
                 }
@@ -154,7 +151,7 @@ impl PlanetComms {
             ComplexResourceType::Diamond => {
                 if bag.has_resource(ResourceType::Basic(Carbon)) > 1 {
                     let (Some(A), Some(B)) = (bag.get_basic(Carbon), bag.get_basic(Carbon))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Diamond{0:A.to_carbon().unwrap(), 1:B.to_carbon().unwrap()}
+                    ComplexResourceRequest::Diamond(A.to_carbon().unwrap(), B.to_carbon().unwrap())
                 } else {
                     return None;
                 }
@@ -162,7 +159,7 @@ impl PlanetComms {
             ComplexResourceType::Dolphin => {
                 if bag.has_resource(ResourceType::Complex(Life)) > 0 && bag.has_resource(ResourceType::Complex(Water)) > 0 {
                     let (Some(A), Some(B)) = (bag.get_complex(Water), bag.get_complex(Life))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Dolphin{0:A.to_water().unwrap(), 1:B.to_life().unwrap()}
+                    ComplexResourceRequest::Dolphin(A.to_water().unwrap(), B.to_life().unwrap())
                 } else {
                     return None;
                 }
@@ -170,7 +167,7 @@ impl PlanetComms {
             ComplexResourceType::Robot => {
                 if bag.has_resource(ResourceType::Basic(BasicResourceType::Silicon)) > 0 && bag.has_resource(ResourceType::Complex(Life)) > 0 {
                     let (Some(A), Some(B)) = (bag.get_basic(BasicResourceType::Silicon), bag.get_complex(Life)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Robot{0:A.to_silicon().unwrap(), 1:B.to_life().unwrap()}
+                    ComplexResourceRequest::Robot(A.to_silicon().unwrap(), B.to_life().unwrap())
                 } else {
                     return None;
                 }
@@ -178,7 +175,7 @@ impl PlanetComms {
             ComplexResourceType::Life => {
                 if bag.has_resource(ResourceType::Complex(Water)) > 0 && bag.has_resource(ResourceType::Basic(Carbon)) > 0 {
                     let (Some(A), Some(B)) = (bag.get_complex(Water), bag.get_basic(Carbon)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Life{0:A.to_water().unwrap(), 1:B.to_carbon().unwrap()}
+                    ComplexResourceRequest::Life(A.to_water().unwrap(), B.to_carbon().unwrap())
                 } else {
                     return None;
                 }
@@ -186,7 +183,7 @@ impl PlanetComms {
             ComplexResourceType::Water => {
                 if bag.has_resource(ResourceType::Basic(Hydrogen)) > 0 && bag.has_resource(ResourceType::Basic(Oxygen)) > 0 {
                     let (Some(A), Some(B)) = (bag.get_basic(Hydrogen), bag.get_basic(Oxygen)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Water{0:A.to_hydrogen().unwrap(), 1:B.to_oxygen().unwrap()}
+                    ComplexResourceRequest::Water(A.to_hydrogen().unwrap(), B.to_oxygen().unwrap())
                 } else {
                     return None;
                 }

@@ -8,3 +8,4 @@ crossbeam-channel = "0.5.16"
 common-game = "3.0.0"
 explorer-common = { git = "https://github.com/crabtorio/explorer-common", version = "0.1.0"}
 rand = "0.10.2"
+log = "0.4.29"

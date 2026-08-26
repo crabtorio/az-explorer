@@ -1,6 +1,5 @@
 
-use common_game::components::resource as resource_lib;
-use common_game::components::resource::{ResourceType, BasicResource, BasicResourceType, ComplexResource, ComplexResourceType, GenericResource};
+use common_game::components::resource::{ResourceType, BasicResourceType, ComplexResourceType, GenericResource};
 use explorer_common::Bag;
 pub struct Inventory {
     bag: Bag,
@@ -15,16 +14,20 @@ impl Inventory {
         &mut self.bag
     }
 
-    pub fn has_resource(&self, resource_type: common_game::components::resource::ResourceType) -> usize {
+    pub fn put_in_bag(&mut self, resource: GenericResource) {
+        self.bag.resources.push(resource);
+    }
+
+    pub fn has_resource(&self, resource_type: ResourceType) -> usize {
         self.bag.contains(resource_type)
     }
 
     pub fn get_basic(&mut self, what: BasicResourceType) -> Option<GenericResource> {
         let mut ret = None;
-        for i in 0..self.bag.resources.len().clone() {
+        for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
                 ResourceType::Basic(A) => {
-                    if ret.is_some() {
+                    if ret.is_none() && A == what {
                         ret = Some(self.bag.resources.remove(i));
                     }
                 }
@@ -35,7 +38,7 @@ impl Inventory {
     }
     pub fn get_complex(&mut self, what: ComplexResourceType) -> Option<GenericResource> {
         let mut ret = None;
-        for i in 0..self.bag.resources.len().clone() {
+        for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
                 ResourceType::Complex(B) => {
                     if ret.is_none() && what == B {
