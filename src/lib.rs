@@ -72,27 +72,25 @@ impl Explorer for LazyBoone {
         }
     }
     fn explorer_ai(&mut self) -> AiReturn {
-        log::trace!("LazyBoone: Explorer_AI ran for a tick");
-        self.brain.populate_plans();
-        let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
-        match order {
-            Ok(()) => {
-                AiReturn::Stop //TODO change for correct one
-            }
-            Err(InterruptOrder::None) => {
-                AiReturn::Stop //TODO change for correct one
-            },
-            Err(InterruptOrder::Reset) => {
-                log::trace!("LazyBoone: Resetting command propagated at head");
-                AiReturn::Reset
-            },
-            Err(InterruptOrder::Stop) => {
-                log::trace!("LazyBoone: Stopping command propagated at head");
-                AiReturn::Stop
-            },
-            Err(InterruptOrder::Die) => {
-                log::debug!("LazyBoone: Kill command propagated at head");
-                AiReturn::Kill
+        loop {
+            log::trace!("LazyBoone: Explorer_AI ran for a tick");
+            self.brain.populate_plans();
+            let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
+            match order {
+                Ok(()) => {}
+                Err(InterruptOrder::None) => {},
+                Err(InterruptOrder::Reset) => {
+                    log::trace!("LazyBoone: Resetting command propagated at head");
+                    return AiReturn::Reset
+                },
+                Err(InterruptOrder::Stop) => {
+                    log::trace!("LazyBoone: Stopping command propagated at head");
+                    return AiReturn::Stop
+                },
+                Err(InterruptOrder::Die) => {
+                    log::debug!("LazyBoone: Kill command propagated at head");
+                    return AiReturn::Kill
+                }
             }
         }
     }
