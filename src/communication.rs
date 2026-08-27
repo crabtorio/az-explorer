@@ -55,7 +55,8 @@ impl OrchestratorComms {
     }
     pub fn get_adjs(&self) -> Result<Vec<ID>, InterruptOrder> {
         log::trace!("LazyBoone: Requesting adjs from orchestrator");
-        if self.channel.send(ExplorerToOrchestrator::NeighborsRequest {explorer_id: self.id, current_planet_id: self.current.borrow().clone() }).is_ok() {
+        let now = *self.current.borrow();
+        if self.channel.send(ExplorerToOrchestrator::NeighborsRequest {explorer_id: self.id, current_planet_id: now }).is_ok() {
             match self.channel.recv() {
                 Err(_) => {
                     panic!("Something went wrong when receiving planet neighbours request");
@@ -88,13 +89,14 @@ impl OrchestratorComms {
 
     pub fn request_move(&self, dest: ID) -> Result<(Sender<ExplorerToPlanet>, ID), InterruptOrder> {
         log::trace!("LazyBoone: Requesting motion");
-        if self.channel.send(ExplorerToOrchestrator::TravelToPlanetRequest {explorer_id: self.id, current_planet_id: self.current.borrow().clone(), dst_planet_id: dest}).is_ok() {
+        let now = *self.current.borrow();
+        if self.channel.send(ExplorerToOrchestrator::TravelToPlanetRequest {explorer_id: self.id, current_planet_id: now, dst_planet_id: dest}).is_ok() {
             match self.channel.recv() {
                 Ok(OrchestratorToExplorer::MoveToPlanet {sender_to_new_planet: a, planet_id: b}) => {
-                    if a.is_none() {
-                        Err(InterruptOrder::None)
+                    if let Some(innie) = a {
+                        Ok((innie, b))
                     } else {
-                        Ok((a.unwrap(), b))
+                        Err(InterruptOrder::None)
                     }
                 },
                 Ok(OrchestratorToExplorer::ResetExplorerAI) => {

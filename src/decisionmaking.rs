@@ -251,8 +251,8 @@ impl Brain {
                         self.current_score -= Score{s: cost};
                         //We now try to get the item
                         match resource.into() {
-                            ResourceType::Basic(Gennable) => {
-                                if let Some(res) = self.planet_comms.borrow().try_get(Gennable) {
+                            ResourceType::Basic(gennable) => {
+                                if let Some(res) = self.planet_comms.borrow().try_get(gennable) {
                                     inventory.put_in_bag(GenericResource::BasicResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);
@@ -263,8 +263,8 @@ impl Brain {
                                 }
 
                             },
-                            ResourceType::Complex(Craftable) => {
-                                if let Some(res) = self.planet_comms.borrow().try_craft(inventory, Craftable) {
+                            ResourceType::Complex(craftable) => {
+                                if let Some(res) = self.planet_comms.borrow().try_craft(inventory, craftable) {
                                     inventory.put_in_bag(GenericResource::ComplexResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);

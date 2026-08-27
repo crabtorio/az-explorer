@@ -27,8 +27,8 @@ impl Inventory {
         let mut ret = None;
         for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
-                ResourceType::Basic(A) => {
-                    if ret.is_none() && A == what {
+                ResourceType::Basic(a) => {
+                    if ret.is_none() && a == what {
                         ret = Some(self.bag.resources.remove(i));
                     }
                 }
@@ -42,8 +42,8 @@ impl Inventory {
         let mut ret = None;
         for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
-                ResourceType::Complex(B) => {
-                    if ret.is_none() && what == B {
+                ResourceType::Complex(b) => {
+                    if ret.is_none() && what == b {
                         ret = Some(self.bag.resources.remove(i));
                     }
                 }

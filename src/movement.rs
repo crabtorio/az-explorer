@@ -22,6 +22,15 @@ impl PlanetStatus{
         }
     }
 }
+
+impl PartialEq for PlanetStatus{
+    fn eq(&self, other: &PlanetStatus) -> bool { //Shallow matching since it is just to distinguish between explored and not
+        matches!((self, other),
+            (PlanetStatus::Unexplored, PlanetStatus::Unexplored) |
+            (PlanetStatus::Explored(_), PlanetStatus::Explored(_))
+        )
+    }
+}
 struct Planet {
     id: ID,
     cont: PlanetStatus,
@@ -139,7 +148,7 @@ impl Memory {
         self.map.clear();
     }
     pub fn get_current_id(&self) -> ID {
-        self.current.borrow().clone()
+        *self.current.borrow()
     }
     pub(crate) fn override_current_id(&mut self, id: ID){
         *self.current.borrow_mut() = id;
@@ -157,54 +166,52 @@ impl Memory {
         let mut touched_update:HashSet<ID> = HashSet::new();
         let mut weights_to_remove: Vec<(ID, AnyResource)> = Vec::new();
 
-        touched_update.insert(id.clone()); //Prevents later from updating the dead planet again
+        touched_update.insert(*id); //Prevents later from updating the dead planet again
 
-        //Weight dependencies propagate upwards, so they must be uprooted
-        {for i in self.weights.get(&id).unwrap().keys() { //Repeat for all elements the planet had weights for
-            let mut handle_queue: VecDeque<ID> = VecDeque::new(); //Non-repeating queue of all planets that have a weight dependent on the deleted planet
-            let mut touched: HashSet<ID> = HashSet::new();
+        //Weight dependencies propagate upwards, so they must be uprooted. If the planet was unexploreed then there was no such thing
+        if self.map.get(id).unwrap().cont != PlanetStatus::Unexplored {
+            for i in self.weights.get(id).unwrap().keys() { //Repeat for all elements the planet had weights for
+                let mut handle_queue: VecDeque<ID> = VecDeque::new(); //Non-repeating queue of all planets that have a weight dependent on the deleted planet
+                let mut touched: HashSet<ID> = HashSet::new();
 
-            handle_queue.push_back(id.clone());
-            touched.insert(id.clone());
+                handle_queue.push_back(*id);
+                touched.insert(*id);
 
-            while !handle_queue.is_empty() {
-                let current = handle_queue.pop_front().unwrap();
-                if !touched.contains(&current) {
-                    if !touched_update.contains(&current) {
-                        touched_update.insert(current);
-                        update_queue.push_back(current);
-                    }
+                while !handle_queue.is_empty() {
+                    let current = handle_queue.pop_front().unwrap();
+                    if !touched.contains(&current) {
+                        if !touched_update.contains(&current) {
+                            touched_update.insert(current);
+                            update_queue.push_back(current);
+                        }
 
-                    weights_to_remove.push((current.clone(), i.clone()));
+                        weights_to_remove.push((current, i.clone()));
 
-                    if let Some(current_weight) = self.weights.get(&current).unwrap().get(i) {
-                        let temp = self.map.get(&current).unwrap().adj.clone();
-                        for ii in temp {
-                            if !touched.contains(&ii) {
-                                if let Some(other_weight) = self.weights.get(&ii).unwrap().get(i) {
-                                    if current_weight > other_weight {
+                        if let Some(current_weight) = self.weights.get(&current).unwrap().get(i) {
+                            let temp = self.map.get(&current).unwrap().adj.clone();
+                            for ii in temp {
+                                if !touched.contains(&ii) &&
+                                    let Some(other_weight) = self.weights.get(&ii).unwrap().get(i) &&
+                                    current_weight > other_weight {
                                         handle_queue.push_back(ii);
                                         touched.insert(ii);
-                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }}
-        {
-            for (idr, whr) in weights_to_remove {
+        }
+        for (idr, whr) in weights_to_remove {
                 self.weights.get_mut(&idr).unwrap().remove(&whr);
-            }
         }
 
-        {self.weights.remove(&id); }
+        self.weights.remove(id);
+
+
 
         //Remove forgotten planet from its adjacencies
-        {
-            let Some(temp) = self.map.remove(&id) else { panic!("How are you forgetting a planet that doesn't exist?") };
-
+        if let Some(temp) = self.map.remove(id) {
             for i in temp.adj {
                 for ii in 0..self.map.get(&i).unwrap().adj.len() {
                     if self.map.get(&i).unwrap().adj[ii] == *id {
@@ -212,6 +219,8 @@ impl Memory {
                     }
                 }
             }
+        } else {
+            panic!("How are you forgetting a planet that doesn't exist?");
         }
 
         for i in update_queue { //Updates all the other planets, now that the adjacency is removed
@@ -221,10 +230,14 @@ impl Memory {
         //From here on all weights should be guaranteed to be valid within Memory (but not necessarily really! you find out when you try and move there)
     }
 
+    fn is_explored(&self, id: &ID) -> bool {
+        self.map.get(id).expect("Planet doesn't exist?").cont != PlanetStatus::Unexplored
+    }
+
     fn explore(&mut self) -> Result<(), InterruptOrder> {
         log::trace!("LazyBoone: Annotating interesting sights");
         let res = self.orchestrator_comms.borrow().get_adjs();
-        let now = self.current.borrow().clone();
+        let now = *self.current.borrow();
         if res.is_err() {
             return Err(res.err().unwrap());
         }
@@ -252,56 +265,54 @@ impl Memory {
         Ok(())
     }
 
-    fn dist_from_here(&self, resource: &AnyResource) -> Option<i32> {
+    fn dist_from_here(&mut self, resource: &AnyResource) -> Result<Option<&i32>, InterruptOrder> {
         log::trace!("LazyBoone: Looking at the map");
-        if let Some(dist) = self.weights.get(&self.current.borrow()).unwrap().get(resource) {
-            Some(dist.clone())
-        } else {
-            None
+        if !self.is_explored(&self.current.borrow()) {
+            self.explore()?
         }
+        Ok(self.weights.get(&self.current.borrow()).expect("Just explored to guarantee there would be one").get(resource))
     }
 
     fn get_dist(&mut self, current_planet: &ID, resource: &AnyResource) -> Option<i32> {
         log::trace!("LazyBoone: Using the fancy compass");
-        self.update_planet(current_planet);
-        if let Some(dist) = self.weights.get(current_planet).unwrap().get(resource) {
-            Some(dist.clone())
-        } else {
-            None
+        if !self.is_explored(current_planet) {
+            return None
         }
+        self.update_planet(current_planet);
+        self.weights.get(current_planet).unwrap().get(resource).copied()
     }
 
     fn update_planet(&mut self, id: &ID) {
         log::trace!("LazyBoone: Inking new info");
-        fn update_weights(W1: &HashMap<AnyResource, i32>, W2: &mut HashMap<AnyResource, i32>) {
-            for i in W1.keys() {
-                match (W1.get(i), W2.get(i)) {
+        fn update_weights(w1: &HashMap<AnyResource, i32>, w2: &mut HashMap<AnyResource, i32>) {
+            for i in w1.keys() {
+                match (w1.get(i), w2.get(i)) {
                     (None, _) => { /*Nothing to do here, should be unreachable*/ },
-                    (Some(w), None) => { W2.insert(i.clone(), w + 1); },
-                    (Some(w1), Some(w2)) => {
-                        if w1 + 1 < *w2 {
-                            W2.insert(i.clone(), w1 + 1);
+                    (Some(innie1), None) => { w2.insert(i.clone(), innie1 + 1); },
+                    (Some(innie1), Some(innie2)) => {
+                        if innie1 + 1 < *innie2 {
+                            w2.insert(i.clone(), innie1 + 1);
                         }
                     },
                 }
             }
         }
 
-        let mut newWeights: HashMap<AnyResource, i32> = HashMap::new();
+        let mut new_weights: HashMap<AnyResource, i32> = HashMap::new();
         for i in self.map.get(id).unwrap().adj.iter() {
             match self.weights.get(i) {
                 None => { /*Nothing to do*/ },
-                Some(W) => { update_weights(W, &mut newWeights) },
+                Some(w) => { update_weights(w, &mut new_weights) },
             }
         }
 
         //Set weights of locally-produced resources to zero
         for i in self.map.get(id).unwrap().cont.get_content().unwrap().iter() {
-            newWeights.insert(i.clone(), 0);
+            new_weights.insert(i.clone(), 0);
         }
 
         //Override old weights
-        self.weights.insert(id.clone(), newWeights);
+        self.weights.insert(*id, new_weights);
     }
 
     fn update_resource(&mut self, id: &ID, resource: AnyResource, dist: i32) {
@@ -311,25 +322,24 @@ impl Memory {
 
     fn next_step (&mut self, start: &ID, what: &AnyResource) -> Option<ID> { //Wish I could've made this a closure inside path_sanity, but rust doesn't like the self borrows
         log::trace!("LazyBoone: Finding the next planet to go");
-        let mut foundID = None;
+        let mut found_id = None;
         match self.get_dist(start, what) { //Updates the planet
             Some(dist) => {
                 let mut candidates = Vec::new();
                 for i in self.map.get(start).unwrap().adj.iter() {
                     candidates.push(*i);
                 }
-                while candidates.len() > 0 {
-                    let candidate = candidates.pop().unwrap();
-                    if self.get_dist(&candidate, what) == Some(dist - 1) {
-                        foundID = Some(candidate);
+                while let Some(candidate) = candidates.pop() {
+                    let cand_res = self.get_dist(&candidate, what);
+                    if cand_res == Some(dist-1) {
+                        found_id = Some(candidate);
                     }
                 }
-                foundID //Someone was found, yay! or the planet was destroyed, bad
+                found_id //Someone was found, yay! or the planet was destroyed, bad
             }
-            None => { None } //You are on a planet adjacent to the destroyed one, so no need to search around
+            None => { None } //You are on a planet adjacent to the destroyed one, or an unexplored one, so no need to search around
         }
     }
-
 
     pub fn path_sanity(&mut self, start: &ID, what: &AnyResource) -> Option<Path> {
         log::trace!("LazyBoone: Making sure he's not about to get lost");
@@ -352,13 +362,13 @@ impl Memory {
                 let mut i = 1;
                 let mut explored: Vec<HashMap<ID, ID>> = Vec::new(); //ID of the planet, ID of the precursor
                 let mut touched: HashSet<ID> = HashSet::new();
-                touched.insert(start.clone());
+                touched.insert(*start);
 
                 let mut found_flag = false;
 
 
                 let mut first_gen: HashMap<ID, ID> = HashMap::new();
-                first_gen.insert(start.clone(), start.clone());
+                first_gen.insert(*start, *start);
 
                 explored.push(first_gen);
 
@@ -366,9 +376,9 @@ impl Memory {
                     let mut new_gen: HashMap<ID, ID> = HashMap::new();
                     for ii in explored[i].keys() {
                         for iii in self.map.get(ii).unwrap().adj.iter() {
-                            if !touched.contains(&iii) {
-                                new_gen.insert(iii.clone(), ii.clone());
-                                touched.insert(iii.clone());
+                            if !touched.contains(iii) {
+                                new_gen.insert(*iii, *ii);
+                                touched.insert(*iii);
                             }
                         }
                     }
@@ -385,10 +395,9 @@ impl Memory {
 
                     let mut lowest_dist: Option<ID> = None;
                     for ii in explored[i].keys() {
-                        if self.weights.get(ii).unwrap().contains_key(what) {
-                            if lowest_dist.is_none() || self.weights.get(ii).unwrap().get(what).unwrap() < self.weights.get(&lowest_dist.unwrap()).unwrap().get(what).unwrap() {
+                        if self.weights.get(ii).unwrap().contains_key(what) &&
+                            lowest_dist.is_none() || self.weights.get(ii).unwrap().get(what).unwrap() < self.weights.get(&lowest_dist.unwrap()).unwrap().get(what).unwrap() {
                                 lowest_dist = Some(*ii);
-                            }
                         }
                     }
 
@@ -421,9 +430,9 @@ impl Memory {
             PathResult::Beaten => {
                 //Next_step is guaranteed because the forget planet function forces all planets to update correctly
                 let mut current = self.next_step(start, what);
-                while current != None {
-                    out_path.push(current.unwrap());
-                    current =self.next_step(&current.unwrap(), what);
+                while let Some(innie) = current {
+                    out_path.push(innie);
+                    current =self.next_step(&innie, what);
                 }
                 Some(out_path)
             }
@@ -437,14 +446,12 @@ impl Memory {
                 }
 
                 //Calls again to go into the PathResult::Beaten branch, and then propagates the return
-                if let Some(some_path) =self.path_sanity(&start, &what) {
-                    Some(some_path)
-                } else {None}
+                self.path_sanity(start, what)
             }
             PathResult::None => {
                 //Shoot out and explore, we don't have a planet for this explored
                 //Go to the first adjacent unexplored planet (explore it), or not having one to a random explored adjacent planet and repeat
-                //Continue going randomly (unxeplored first) and stop when you find a suitable planet
+                //Continue going randomly (unexplored first) and stop when you find a suitable planet
                 //Ideally, store the planets walked in a LIFO queue and run an update on them when a planet is found
                 None
             }
@@ -466,21 +473,22 @@ impl Thrusters {
     }
     
     pub fn make_path(&mut self, what: AnyResource) -> Option<Path> {
-        let now = self.memory.current.borrow().clone();
+        let now = *self.memory.current.borrow();
         self.memory.path_sanity(&now, &what)
     }
     
     pub fn move_to (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
         log::trace!("LazyBoone: Firing up the engines to move");
-        let now = self.memory.current.borrow().clone();
-        if let Some(path) = self.memory.path_sanity(&now, &what) {
+        let now = *self.memory.current.borrow();
+        let ret = self.memory.path_sanity(&now, &what);
+
+        if let Some(path) = ret {
             //Found a path
             let mut counter = 0;
             for i in path {
                 let res = self.orchestrator_comms.borrow().request_move(i);
-                if res.is_err() {
+                if let Err(ord) = res {
                     //Move failed
-                    let ord = res.err().unwrap();
                     return Err((ord, counter))
                 } else {
                     counter += 1;
@@ -492,47 +500,53 @@ impl Thrusters {
         }
     }
 
-    fn explore (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
+    fn explore(&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
         log::trace!("LazyBoone: Exploing uncharted land");
         //Explore until finding the requested resource, then return the amount of movements done
         let mut counter:i32 = 0;
-        
-        while self.memory.dist_from_here(&what).is_none() && counter <= (EXPECTED_RANDOM_MOVE * 2) as i32 {
+
+        while counter <= (EXPECTED_RANDOM_MOVE * 2) as i32 &&
+                match self.memory.dist_from_here(&what) {
+                    Ok(None) => { true },
+                    Ok(Some(_)) => { false },
+                    Err(ord) => { return Err((ord, counter)) }
+                }
+        {
             counter += 1;
             let mut found = None;
             let adjs = self.memory.map.get(&self.memory.get_current_id()).unwrap().adj.clone();
             for i in adjs.iter() {
-                if found.is_none() {
-                    match self.memory.map.get(i).unwrap().cont {
-                        PlanetStatus::Unexplored => {
-                            found = Some(i);
-                        }
-                        _ => {}
-                    }
+                if found.is_none() && let PlanetStatus::Unexplored = self.memory.map.get(i).unwrap().cont {
+                    found = Some(i);
                 }
             }
+
             if let Some(found) = found {
-                let res = self.orchestrator_comms.borrow().request_move(found.clone());
-                return if res.is_ok() {
+                let res = self.orchestrator_comms.borrow().request_move(*found);
+                if res.is_ok() {
                     //If new planet, explore, else move failed
-                    self.memory.explore();
-                    Ok(counter)
+                    if let Err(ord) = self.memory.explore() {
+                        return Err((ord, counter))
+                    }
                 } else {
-                    self.memory.forget_planet(found);
-                    Err((res.err().unwrap(), counter - 1))
+                    let ord = res.err().unwrap();
+
+                    if ord == InterruptOrder::None {
+                        self.memory.forget_planet(found);
+                    }
+                    return Err((ord, counter - 1))
                 }
             } else {
                 let next_step = (rand::random::<i32>() % adjs.len() as i32) as usize; //Pseudo-random to guarantee no infinite loops
-                let now = self.memory.current.borrow().clone();
+                let now = *self.memory.current.borrow();
                 let res = self.orchestrator_comms.borrow().request_move(self.memory.map.get(&now).unwrap().adj[next_step]);
-                if res.is_err() {
+                if let Err(ord) = res {
                     //request_move failed
-                    let res = res.err().unwrap();
-                    if res == InterruptOrder::None {
+                    if ord == InterruptOrder::None {
                         let what = self.memory.map.get(&now).unwrap().adj[next_step];
                         self.memory.forget_planet(&what);
                     }
-                    return Err((res, counter));
+                    return Err((ord, counter));
                 }
             }
         }

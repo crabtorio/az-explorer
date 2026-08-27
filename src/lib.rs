@@ -36,12 +36,12 @@ pub enum InterruptOrder {
 
 impl PartialEq for InterruptOrder {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (InterruptOrder::None, InterruptOrder::None) => true,
-            (InterruptOrder::Reset, InterruptOrder::Reset) => true,
-            (InterruptOrder::Stop, InterruptOrder::Stop) => true,
-            _ => false,
-        }
+        matches!((self, other),
+            (InterruptOrder::None, InterruptOrder::None) |
+            (InterruptOrder::Reset, InterruptOrder::Reset) |
+            (InterruptOrder::Stop, InterruptOrder::Stop) |
+            (InterruptOrder::Die, InterruptOrder::Die)
+        )
     }
 }
 
