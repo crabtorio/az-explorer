@@ -72,6 +72,13 @@ impl Explorer for LazyBoone {
         }
     }
     fn explorer_ai(&mut self) -> AiReturn {
+        match self.thrusters.memory.explore() {
+            Ok(()) => {/*Proceed to loop*/}
+            Err(InterruptOrder::None) => {panic!("Initial exploration before loop somehow had a non-interruption error")},
+            Err(InterruptOrder::Reset) => {return AiReturn::Reset},
+            Err(InterruptOrder::Stop) => {return AiReturn::Stop},
+            Err(InterruptOrder::Die) => {return AiReturn::Kill}
+        }; //Guarantee to know where you are now
         loop {
             log::trace!("LazyBoone: Explorer_AI ran for a tick");
             self.brain.populate_plans();

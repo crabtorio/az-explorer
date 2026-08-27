@@ -175,7 +175,7 @@ impl Plan {
         let mut requirements_met = true;
         let keys = self.prerequisites.keys();
         for i in keys {
-            requirements_met = (*self.prerequisites.get(i).unwrap() <= inventory.has_resource(*i)) && requirements_met; //Only give points if the prerequisites are met
+            requirements_met = (*self.prerequisites.get(i).expect("A key iterator somehow is not a key") <= inventory.has_resource(*i)) && requirements_met; //Only give points if the prerequisites are met
         }
 
         if requirements_met {
@@ -228,7 +228,7 @@ impl Brain {
         let mut best_scorer = None;
         for i in 0..self.plans.len() {
             let score = self.plans[i].get_score(memory, inventory);
-            if best_score.is_none() || score > best_score.clone().unwrap() { //The or short circuiting protects the unwrap
+            if best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned") { //The or short circuiting protects the unwrap
                 best_scorer = Some(i);
                 best_score = Some(score);
             }
@@ -243,7 +243,7 @@ impl Brain {
         let which = self.best_plan(borrow_mem, inventory);
         match which {
             Some(indx) => {
-                let plan = self.plans.get(indx).unwrap();
+                let plan = self.plans.get(indx).expect("Somehow, the best plan is outside of the plan array");
                 let resource = plan.action.get_resource();
                 let res = thrusters.move_to(resource.clone());
                 match res {

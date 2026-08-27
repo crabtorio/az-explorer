@@ -189,48 +189,48 @@ impl PlanetComms {
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {
-                    let (Some(a), Some(b)) = (bag.get_complex(Robot), bag.get_complex(Diamond))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::AIPartner(a.to_robot().unwrap(), b.to_diamond().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Robot), bag.get_complex(Diamond)) else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::AIPartner(a.to_robot().expect("Item changed identity between grab and use"), b.to_diamond().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Diamond => {
                 if bag.has_resource(ResourceType::Basic(Carbon)) > 1 {
-                    let (Some(a), Some(b)) = (bag.get_basic(Carbon), bag.get_basic(Carbon))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Diamond(a.to_carbon().unwrap(), b.to_carbon().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(Carbon), bag.get_basic(Carbon))else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::Diamond(a.to_carbon().expect("Item changed identity between grab and use"), b.to_carbon().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Dolphin => {
                 if bag.has_resource(ResourceType::Complex(Life)) > 0 && bag.has_resource(ResourceType::Complex(Water)) > 0 {
-                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_complex(Life))else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Dolphin(a.to_water().unwrap(), b.to_life().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_complex(Life))else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::Dolphin(a.to_water().expect("Item changed identity between grab and use"), b.to_life().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Robot => {
                 if bag.has_resource(ResourceType::Basic(BasicResourceType::Silicon)) > 0 && bag.has_resource(ResourceType::Complex(Life)) > 0 {
-                    let (Some(a), Some(b)) = (bag.get_basic(BasicResourceType::Silicon), bag.get_complex(Life)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Robot(a.to_silicon().unwrap(), b.to_life().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(BasicResourceType::Silicon), bag.get_complex(Life)) else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::Robot(a.to_silicon().expect("Item changed identity between grab and use"), b.to_life().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Life => {
                 if bag.has_resource(ResourceType::Complex(Water)) > 0 && bag.has_resource(ResourceType::Basic(Carbon)) > 0 {
-                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_basic(Carbon)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Life(a.to_water().unwrap(), b.to_carbon().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_complex(Water), bag.get_basic(Carbon)) else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::Life(a.to_water().expect("Item changed identity between grab and use"), b.to_carbon().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
             }
             ComplexResourceType::Water => {
                 if bag.has_resource(ResourceType::Basic(Hydrogen)) > 0 && bag.has_resource(ResourceType::Basic(Oxygen)) > 0 {
-                    let (Some(a), Some(b)) = (bag.get_basic(Hydrogen), bag.get_basic(Oxygen)) else {panic!("This shouldn't happen")};
-                    ComplexResourceRequest::Water(a.to_hydrogen().unwrap(), b.to_oxygen().unwrap())
+                    let (Some(a), Some(b)) = (bag.get_basic(Hydrogen), bag.get_basic(Oxygen)) else {panic!("Bag changed between resource check and grab")};
+                    ComplexResourceRequest::Water(a.to_hydrogen().expect("Item changed identity between grab and use"), b.to_oxygen().expect("Item changed identity between grab and use"))
                 } else {
                     return None;
                 }
