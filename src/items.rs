@@ -15,6 +15,8 @@ impl Inventory {
     }
 
     pub fn put_in_bag(&mut self, resource: GenericResource) {
+        log::debug!{"Lazyboone: Putting a {:?} away for a sunny day", resource}
+
         self.bag.resources.push(resource);
     }
 
