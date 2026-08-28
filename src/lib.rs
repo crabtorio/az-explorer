@@ -91,6 +91,7 @@ impl  ExplorerTrait for Explorer {
             match order {
                 Ok(()) => {
                     //Just in case, better poll the orchestrator in case the best plan was idling (which doesn't include comms)
+                    /*
                     match self.orchestrator_comms.borrow().poll() {
                         Ok(()) => {/*Proceed to loop*/}
                         Err(InterruptOrder::None) => {panic!("Polling encountered some unknown error")},
@@ -98,6 +99,7 @@ impl  ExplorerTrait for Explorer {
                         Err(InterruptOrder::Stop) => {return AiReturn::Stop},
                         Err(InterruptOrder::Die) => {return AiReturn::Kill}
                     };
+                    */
                 }
                 Err(InterruptOrder::None) => {},
                 Err(InterruptOrder::Reset) => {

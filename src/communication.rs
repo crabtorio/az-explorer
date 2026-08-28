@@ -117,7 +117,7 @@ impl OrchestratorComms {
             panic!("Can't send the explorer move request");
         }
     }
-    
+
     pub fn poll(&self) -> Result<(), InterruptOrder> {
         log::trace!("LazyBoone: Making sure perseverance is appreciated");
         
@@ -142,7 +142,7 @@ impl OrchestratorComms {
                 panic!("Could not poll Orchestrator");
             }
         }
-        
+
     }
 }
 
