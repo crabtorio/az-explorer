@@ -387,7 +387,7 @@ impl Memory {
                     explored.push(new_gen);
                     i += 1;
                     for ii in explored[i].keys() {
-                        if self.weights.get(ii).expect("Explored planets should always have a weight").contains_key(what) {
+                        if self.is_explored(ii) && self.weights.get(ii).expect("Explored planets should always have a weight").contains_key(what) {
                             found_flag = true;
                         }
                     }
