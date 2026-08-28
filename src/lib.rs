@@ -17,7 +17,7 @@ use explorer_common::{Bag, BagContent, Explorer, AiReturn};
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
 
-struct LazyBoone {
+pub struct LazyBoone {
     id: ID,
     is_auto: bool,
     brain: Brain,
@@ -45,7 +45,7 @@ impl PartialEq for InterruptOrder {
     }
 }
 
-impl Explorer for LazyBoone {
+impl  Explorer for LazyBoone {
     fn new(
         id: ID,
         bag: Bag,
