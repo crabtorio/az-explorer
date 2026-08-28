@@ -14,7 +14,7 @@ use crate::movement::{AnyResource, Memory, Thrusters};
 const MOVEMENT_COST: i32 = -1;
 pub const EXPECTED_RANDOM_MOVE: usize = 15;
 const EXPLORATION_COST: i32 = EXPECTED_RANDOM_MOVE as i32 * MOVEMENT_COST;
-const ITEM_MULT: i32 = 5;
+const ITEM_MULT: i32 = 50;
 const BASIC_VALUE: i32 = 1 * ITEM_MULT;
 const COMPLEXITY_OFFSET: i32 = 1 * ITEM_MULT;
 const WATER_VALUE: i32 = BASIC_VALUE * 2 + COMPLEXITY_OFFSET;
