@@ -28,7 +28,7 @@ impl Inventory {
         log::debug!("LazyBoone: Pulling a {:?} from his pockets", what);
         let mut ret = None;
         for i in 0..self.bag.resources.len() {
-            match self.bag.resources[i].get_type() {
+            match self.bag.resources.get(i).expect("i is between 0 and len, so this should work").get_type() {
                 ResourceType::Basic(a) => {
                     if ret.is_none() && a == what {
                         ret = Some(self.bag.resources.remove(i));
