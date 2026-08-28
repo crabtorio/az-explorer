@@ -209,6 +209,10 @@ impl Brain {
         }
     }
 
+    pub fn get_current_score(&self) -> i32 {
+        self.current_score.s
+    }
+
     pub fn reset(&mut self) {
         log::trace!("LazyBoone: Thinking it's time for a new start");
         self.current_score = Score {s: 0};
@@ -239,8 +243,8 @@ impl Brain {
         let borrow_mem = &mut  thrusters.memory;
         let which = self.best_plan(borrow_mem, inventory);
         match which {
-            Some(indx) => {
-                let plan = self.plans.get(indx).expect("Somehow, the best plan is outside of the plan array");
+            Some(index) => {
+                let plan = self.plans.get(index).expect("Somehow, the best plan is outside of the plan array");
                 let resource = plan.action.get_resource();
                 let res = thrusters.move_to(resource.clone());
                 match res {
@@ -252,12 +256,12 @@ impl Brain {
                                 if let Some(res) = self.planet_comms.borrow().try_get(gennable) {
                                     inventory.put_in_bag(GenericResource::BasicResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
-                                    self.plans.remove(indx);
+                                    self.plans.remove(index);
                                     self.last_failure = None;
                                     log::trace!("LazyBoone: Reaping what was sown");
                                 } else {
                                     //Item not got, plan is not deleted
-                                    self.last_failure = Some(self.plans.get(indx).expect("Really, after all this checking?").action.get_resource());
+                                    self.last_failure = Some(self.plans.get(index).expect("Really, after all this checking?").action.get_resource());
                                     log::trace!("LazyBoone: Feeling defeated but not dejected");
                                 }
 
@@ -266,12 +270,12 @@ impl Brain {
                                 if let Some(res) = self.planet_comms.borrow().try_craft(inventory, craftable) {
                                     inventory.put_in_bag(GenericResource::ComplexResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
-                                    self.plans.remove(indx);
+                                    self.plans.remove(index);
                                     self.last_failure = None;
                                     log::trace!("LazyBoone: Enjoying the spoils of victory");
                                 } else {
                                     //Item not got, plan is not deleted
-                                    self.last_failure = Some(self.plans.get(indx).expect("Running out of witty things to say in these").action.get_resource());
+                                    self.last_failure = Some(self.plans.get(index).expect("Running out of witty things to say in these").action.get_resource());
                                     log::trace!("LazyBoone: Renewing hunger for success");
                                 }
                             }
@@ -305,7 +309,7 @@ impl Brain {
         log::trace!("LazyBoone: Making sure bases will be covered, eventually");
         for (i, n) in plan.prerequisites.iter() { //For every prerequisite
             for _ in  0..*n { //Repeat requisite amount of times
-                self.make_plan(*i); //Recursively make the prerequisite plan
+                self.make_plan(*i); //Recursively make the prerequisite plans
             }
         }
         self.plans.push_back(plan); //Commit the created plans

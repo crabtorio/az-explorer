@@ -85,7 +85,7 @@ impl  ExplorerTrait for Explorer {
             Err(InterruptOrder::Die) => {return AiReturn::Kill}
         }; //Guarantee to know where you are now
         loop {
-            log::debug!("LazyBoone: Explorer_AI ran for a tick");
+            log::debug!("LazyBoone: Explorer_AI now has a score of: {}", self.brain.get_current_score());
             self.brain.populate_plans();
             let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
             match order {
