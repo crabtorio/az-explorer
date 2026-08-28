@@ -32,6 +32,7 @@ impl Inventory {
                 ResourceType::Basic(a) => {
                     if ret.is_none() && a == what {
                         ret = Some(self.bag.resources.remove(i));
+                        return ret;
                     }
                 }
                 _ => { ret = None}
@@ -47,6 +48,7 @@ impl Inventory {
                 ResourceType::Complex(b) => {
                     if ret.is_none() && what == b {
                         ret = Some(self.bag.resources.remove(i));
+                        return ret;
                     }
                 }
                 _ => { ret = None }
