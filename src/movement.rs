@@ -245,7 +245,7 @@ impl Memory {
 
         for i in new_adjs.iter() {
             if !self.map.contains_key(i) {
-                self.map.insert(*i, Planet::new(*i));
+                self.insert_planet(*i);
             }
         }
 

@@ -76,12 +76,9 @@ impl PartialOrd for Expectedscore {
 
 impl Clone for Expectedscore {
     fn clone(&self) -> Self {
-        Expectedscore{s: self.s}
+        Expectedscore { s: self.s }
     }
 }
-
-
-type ActionResult = Result<(), ()>;
 
 enum Actions {
     Grab(BasicResourceType), //insert item type here, should create it's move command on creation, using the weights

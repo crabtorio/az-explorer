@@ -37,10 +37,6 @@ impl OrchestratorComms {
             channel,
         }
     }
-    
-    pub fn override_current_id(&mut self, id: ID) {
-        *self.current.borrow_mut() = id;
-    }
 
     pub fn get_channel(&mut self) -> LoggedChannel<ExplorerToOrchestrator<BagContent>, OrchestratorToExplorer> {
         self.channel.clone()
@@ -159,10 +155,6 @@ impl PlanetComms {
             current,
             channel,
         }
-    }
-
-    pub fn override_current_id(&mut self, id: ID) {
-        *self.current.borrow_mut() = id;
     }
     pub fn get_channel(&mut self) -> LoggedChannel<ExplorerToPlanet, PlanetToExplorer> {
         self.channel.clone()
