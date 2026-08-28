@@ -194,7 +194,7 @@ impl Plan {
 
 pub struct Brain {
     current_score: Score,
-    last_failure: Option<ResourceType>,
+    last_failure: Option<AnyResource>,
     plans: VecDeque<Plan>,
     planet_comms: Rc<RefCell<PlanetComms>>
 }
@@ -230,7 +230,7 @@ impl Brain {
         let mut best_score = None;
         let mut best_scorer = None;
         for i in 0..self.plans.len() {
-            if self.last_failure.is_none() || ( self.plans.len() == 1 || self.last_failure.clone().expect("Just checked it is not none") != self.plans.get(i).expect("i in between 0 an len so you'll never read this!").action.get_resource().into()) { //clone not to consume it, if the plan is the last failure it does not qualify, unless it is the only plan
+            if self.last_failure.is_none() || ( self.plans.len() == 1 || self.last_failure.clone().expect("Just checked it is not none") != self.plans.get(i).expect("i in between 0 an len so you'll never read this!").action.get_resource()) { //clone not to consume it, if the plan is the last failure it does not qualify, unless it is the only plan
                 let score = self.plans[i].get_score(memory, inventory);
                 if score.positive() && (best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned")) { //The or short circuiting protects the unwrap
                     best_scorer = Some(i);
@@ -265,7 +265,7 @@ impl Brain {
                                     log::trace!("LazyBoone: Reaping what was sown");
                                 } else {
                                     //Item not got, plan is not deleted
-                                    self.last_failure = Some(self.plans.get(indx).expect("Really, after all this checking?").action.get_resource().into());
+                                    self.last_failure = Some(self.plans.get(indx).expect("Really, after all this checking?").action.get_resource());
                                     log::trace!("LazyBoone: Feeling defeated but not dejected");
                                 }
 
@@ -279,7 +279,7 @@ impl Brain {
                                     log::trace!("LazyBoone: Enjoying the spoils of victory");
                                 } else {
                                     //Item not got, plan is not deleted
-                                    self.last_failure = Some(self.plans.get(indx).expect("Running out of witty things to say in these").action.get_resource().into());
+                                    self.last_failure = Some(self.plans.get(indx).expect("Running out of witty things to say in these").action.get_resource());
                                     log::trace!("LazyBoone: Renewing hunger for success");
                                 }
                             }
