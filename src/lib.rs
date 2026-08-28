@@ -12,7 +12,7 @@ use crate::movement::Memory;
 use crate::movement::Thrusters;
 use crate::decisionmaking::Brain;
 
-use explorer_common::{Bag, BagContent, Explorer as ExploTrait, AiReturn};
+use explorer_common::{Bag, BagContent, Explorer as ExplorerTrait, AiReturn};
 
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
@@ -45,7 +45,7 @@ impl PartialEq for InterruptOrder {
     }
 }
 
-impl  ExploTrait for Explorer {
+impl  ExplorerTrait for Explorer {
     fn new(
         id: ID,
         bag: Bag,
