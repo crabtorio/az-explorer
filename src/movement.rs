@@ -361,7 +361,7 @@ impl Memory {
                 }
             },
             None => {
-                let mut i = 1;
+                let mut i = 0;
                 let mut explored: Vec<HashMap<ID, ID>> = Vec::new(); //ID of the planet, ID of the precursor
                 let mut touched: HashSet<ID> = HashSet::new();
                 touched.insert(*start);
