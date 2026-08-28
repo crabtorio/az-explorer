@@ -3,8 +3,12 @@ mod movement;
 mod items;
 mod decisionmaking;
 
+const SLEEP_MILLIS: u64 = 500;
+
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::thread::sleep;
+use std::time::Duration;
 
 use crate::communication::{OrchestratorComms, PlanetComms};
 use crate::items::Inventory;
@@ -109,6 +113,7 @@ impl  ExplorerTrait for Explorer {
                     return AiReturn::Kill
                 }
             }
+            sleep(Duration::from_millis(SLEEP_MILLIS));
         }
     }
 
