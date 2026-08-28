@@ -194,6 +194,7 @@ impl Plan {
 
 pub struct Brain {
     current_score: Score,
+    last_failure: Option<usize>,
     plans: VecDeque<Plan>,
     planet_comms: Rc<RefCell<PlanetComms>>
 }
@@ -202,6 +203,7 @@ impl Brain {
     pub fn new(planet_comms: Rc<RefCell<PlanetComms>>) -> Brain {
         Self {
             current_score: Score {s: 0},
+            last_failure: None,
             plans: VecDeque::new(),
             planet_comms
         }
@@ -215,6 +217,7 @@ impl Brain {
         log::trace!("LazyBoone: Thinking it's time for a new start");
         self.current_score = Score {s: 0};
         self.plans.clear();
+        self.last_failure = None;
     }
 
     fn add_score(&mut self, other: Score) {
@@ -227,10 +230,12 @@ impl Brain {
         let mut best_score = None;
         let mut best_scorer = None;
         for i in 0..self.plans.len() {
-            let score = self.plans[i].get_score(memory, inventory);
-            if best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned") { //The or short circuiting protects the unwrap
-                best_scorer = Some(i);
-                best_score = Some(score);
+            if self.last_failure.is_none() || ( self.plans.len() == 1 || self.last_failure.clone().expect("Just checked it is not none") != i) { //clone not to consume it, if the plan is the last failure it does not qualify, unless it is the only plan
+                let score = self.plans[i].get_score(memory, inventory);
+                if best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned") { //The or short circuiting protects the unwrap
+                    best_scorer = Some(i);
+                    best_score = Some(score);
+                }
             }
         }
         best_scorer
@@ -256,9 +261,11 @@ impl Brain {
                                     inventory.put_in_bag(GenericResource::BasicResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);
+                                    self.last_failure = None;
                                     log::trace!("LazyBoone: Reaping what was sown");
                                 } else {
                                     //Item not got, plan is not deleted
+                                    self.last_failure = Some(indx);
                                     log::trace!("LazyBoone: Feeling defeated but not dejected");
                                 }
 
@@ -268,9 +275,11 @@ impl Brain {
                                     inventory.put_in_bag(GenericResource::ComplexResources(res));
                                     self.current_score += plan.action.get_expected_score().to_score();
                                     self.plans.remove(indx);
+                                    self.last_failure = None;
                                     log::trace!("LazyBoone: Enjoying the spoils of victory");
                                 } else {
                                     //Item not got, plan is not deleted
+                                    self.last_failure = Some(indx);
                                     log::trace!("LazyBoone: Renewing hunger for success");
                                 }
                             }
@@ -280,6 +289,7 @@ impl Brain {
                     Err((ord, cost)) => {
                         log::trace!("LazyBoone: Unexpected order passed by the brain");
                         self.current_score -= Score{s: cost};
+                        self.last_failure = None;
                         Err(ord)
                         //Plan not removed from Brain, no further action necessary
                     }
@@ -287,6 +297,7 @@ impl Brain {
             }
             None => {
                 //Nothing to do, better poll just in case
+                self.last_failure = None;
                 log::trace!("LazyBoone: Idling, loitering even");
                 Ok(())
             }
