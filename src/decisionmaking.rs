@@ -185,8 +185,11 @@ impl Plan {
                 None => { Expectedscore::new(EXPLORATION_COST) },
                 Some(p) => { Expectedscore::new(p.len() as i32 * MOVEMENT_COST) }
             };
-            item_score + move_cost
+            let total = item_score + move_cost;
+            log::trace!("Item {:?} scored {:?}", <AnyResource as Into<ResourceType>>::into(self.action.get_resource()), total.s);
+            total
         } else {
+            log::trace!("Item {:?} did not have its requirements met", <AnyResource as Into<ResourceType>>::into(self.action.get_resource()));
             Expectedscore::new(0)
         }
     }
@@ -221,7 +224,12 @@ impl Brain {
     }
 
     fn best_plan(&self, memory: &mut Memory, inventory: &Inventory) -> Option<usize> {
-        log::trace!("LazyBoone: Making the bast of what he came up with");
+        if self.last_failure.is_none() {
+            log::trace!("LazyBoone: Making the bast of what he came up with");
+        } else {
+            log::trace!("LazyBoone: Making the bast of what he came up with, avoiding previously wrong {:?}", <AnyResource as Into<ResourceType>>::into(self.last_failure.clone().expect("HOW?")));
+        }
+
 
         let mut best_score = None;
         let mut best_scorer = None;

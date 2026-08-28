@@ -208,6 +208,21 @@ impl PlanetComms {
 
     pub fn try_craft(&self, bag: &mut Inventory, what: ComplexResourceType) -> Option<ComplexResource> {
         log::debug!("LazyBoone: Requesting complex resource ({:?}) from planet", what);
+
+        if let Ok(()) = self.channel.send(ExplorerToPlanet::AvailableEnergyCellRequest {explorer_id: self.id}) {
+            match self.channel.recv() {
+                Err(_) => panic!("Something went wrong when receiving complex resource request"),
+                Ok(PlanetToExplorer::AvailableEnergyCellResponse { available_cells: count }) => {
+                    if 1 > count {
+                        return None
+                    }
+                }
+                Ok(_) => panic!("Unexpected planet reply"),
+            }
+        } else {
+            panic!("Can't send the explorer available energy cell request");
+        }
+
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {
