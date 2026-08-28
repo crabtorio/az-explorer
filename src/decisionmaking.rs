@@ -300,7 +300,7 @@ impl Brain {
         }
     }
 
-    fn plan_count(&self) -> usize {
+    pub fn plan_count(&self) -> usize {
         self.plans.len()
     }
 
