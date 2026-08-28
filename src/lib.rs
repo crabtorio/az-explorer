@@ -12,12 +12,12 @@ use crate::movement::Memory;
 use crate::movement::Thrusters;
 use crate::decisionmaking::Brain;
 
-use explorer_common::{Bag, BagContent, Explorer, AiReturn};
+use explorer_common::{Bag, BagContent, Explorer as ExploTrait, AiReturn};
 
 use common_game::utils::ID;
 use crossbeam_channel::{Receiver, Sender};
 
-pub struct LazyBoone {
+pub struct Explorer {
     id: ID,
     is_auto: bool,
     brain: Brain,
@@ -45,7 +45,7 @@ impl PartialEq for InterruptOrder {
     }
 }
 
-impl  Explorer for LazyBoone {
+impl  ExploTrait for Explorer {
     fn new(
         id: ID,
         bag: Bag,
