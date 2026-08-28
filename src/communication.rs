@@ -120,7 +120,7 @@ impl OrchestratorComms {
 
     pub fn poll(&self) -> Result<(), InterruptOrder> {
         log::trace!("LazyBoone: Making sure perseverance is appreciated");
-        
+
         match self.channel.poll() {
             Ok(None) => {
                 //Go ahead
@@ -199,7 +199,7 @@ impl PlanetComms {
     }
 
     pub fn try_get(&self, what: BasicResourceType) -> Option<BasicResource>  {
-        log::debug!("LazyBoone: Requesting basic resource from planet");
+        log::debug!("LazyBoone: Requesting basic resource ({:?}) from planet", what);
         if self.channel.send(ExplorerToPlanet::GenerateResourceRequest {explorer_id: self.id, resource: what}).is_ok() {
             if let Ok(PlanetToExplorer::GenerateResourceResponse {resource}) = self.channel.recv() {
                 resource
@@ -212,7 +212,7 @@ impl PlanetComms {
     }
 
     pub fn try_craft(&self, bag: &mut Inventory, what: ComplexResourceType) -> Option<ComplexResource> {
-        log::debug!("LazyBoone: Requesting complex resource from planet");
+        log::debug!("LazyBoone: Requesting complex resource ({:?}) from planet", what);
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {

@@ -486,7 +486,7 @@ impl Thrusters {
     }
     
     pub fn move_to (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
-        log::trace!("LazyBoone: Firing up the engines to move");
+        log::debug!("LazyBoone: Firing up the engines to move");
         let now = *self.memory.current.borrow();
         let ret = self.memory.path_sanity(&now, &what);
 
@@ -509,7 +509,7 @@ impl Thrusters {
     }
 
     fn explore(&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
-        log::trace!("LazyBoone: Exploing uncharted land");
+        log::debug!("LazyBoone: Exploing uncharted land");
         //Explore until finding the requested resource, then return the amount of movements done
         let mut counter:i32 = 0;
 
