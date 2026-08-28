@@ -6,6 +6,6 @@ edition = "2024"
 [dependencies]
 crossbeam-channel = "0.5.16"
 common-game = "3.0.0"
-explorer-common = { git = "https://github.com/crabtorio/explorer-common" }
+explorer-common = { git = "https://github.com/crabtorio/explorer-common", branch = "main" }
 rand = "0.10.2"
 log = "0.4.29"
