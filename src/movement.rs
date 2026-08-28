@@ -258,6 +258,8 @@ impl Memory {
         }
         self.map.get_mut(&now).expect("Planet somehow doesn't exist, even though it is guaranteed by memory creation and expansion").explored(PlanetContent::new(prods.clone()));
 
+        self.weights.insert(now, HashMap::new());
+
         for i in prods {
             self.update_resource(&now, i, 0); //All resources it produces have distance zero
         }

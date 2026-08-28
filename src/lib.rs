@@ -72,6 +72,7 @@ impl  ExplorerTrait for Explorer {
         }
     }
     fn explorer_ai(&mut self) -> AiReturn {
+        log::trace!("LazyBoone: Exploring starting planet");
         match self.thrusters.memory.explore() {
             Ok(()) => {/*Proceed to loop*/}
             Err(InterruptOrder::None) => {panic!("Initial exploration before loop somehow had a non-interruption error")},
