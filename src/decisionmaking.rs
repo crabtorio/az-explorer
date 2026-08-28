@@ -330,4 +330,8 @@ impl Brain {
             self.make_plan(ResourceType::Complex(ComplexResourceType::AIPartner));
         }
     }
+    
+    pub fn so_long_and_thanks_for_all_the_fish(&mut self) {
+        self.make_plan(ResourceType::Complex(ComplexResourceType::Dolphin));
+    }
 }

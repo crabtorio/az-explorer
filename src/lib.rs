@@ -64,11 +64,13 @@ impl  ExplorerTrait for Explorer {
         let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_channel)));
         let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id, planet_id.clone(), orchestrator_channel)));
         let memory =  Memory::new(planet_id.clone(), orchestrator_comms.clone(), planet_comms.clone());
+        let mut brain = Brain::new(planet_comms.clone());
+        brain.so_long_and_thanks_for_all_the_fish();
 
         Self {
             id,
             is_auto: false,
-            brain: Brain::new(planet_comms.clone()),
+            brain,
             orchestrator_comms: orchestrator_comms.clone(),
             planet_comms: planet_comms.clone(),
             thrusters: Thrusters::new(memory, orchestrator_comms.clone()),
