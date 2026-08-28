@@ -61,7 +61,7 @@ impl  ExplorerTrait for Explorer {
 
         let planet_id = Rc::new(RefCell::new(digit_planet_id));
         let inventory = Inventory::new(bag);
-        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_id.clone(), planet_channel)));
+        let planet_comms = Rc::new(RefCell::new(PlanetComms::new(id, planet_channel)));
         let orchestrator_comms = Rc::new(RefCell::new(OrchestratorComms::new(id, planet_id.clone(), orchestrator_channel)));
         let memory =  Memory::new(planet_id.clone(), orchestrator_comms.clone(), planet_comms.clone());
 

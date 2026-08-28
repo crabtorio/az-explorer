@@ -32,7 +32,6 @@ impl PartialEq for PlanetStatus{
     }
 }
 struct Planet {
-    id: ID,
     cont: PlanetStatus,
     adj: Vec<ID>
 }
@@ -56,9 +55,8 @@ impl PlanetContent {
 
 impl Planet {
 
-    fn new(received_id: ID) -> Self {
+    fn new() -> Self {
         Planet {
-            id: received_id,
             cont: PlanetStatus::Unexplored,
             adj: Vec::new()
         }
@@ -137,7 +135,7 @@ pub struct Memory {
 impl Memory {
     pub fn new(current: Rc<RefCell<ID>>, orchestrator_comms: Rc<RefCell<OrchestratorComms>>, planet_comms: Rc<RefCell<PlanetComms>>) -> Self {
         let mut map: HashMap<ID, Planet> = HashMap::new();
-        map.insert(*current.borrow(), Planet::new(*current.borrow()));
+        map.insert(*current.borrow(), Planet::new());
         Self { current, map, weights: HashMap::new(), planet_comms: planet_comms.clone(), orchestrator_comms: orchestrator_comms.clone()}
     }
 
@@ -154,7 +152,7 @@ impl Memory {
     }
     fn insert_planet(&mut self, id: ID) {
         log::trace!("LazyBoone: Noticing a new planet, naming it {:?}", id);
-        self.map.insert(id, Planet::new(id));
+        self.map.insert(id, Planet::new());
         self.weights.insert(id, HashMap::new());
     }
 
@@ -480,11 +478,6 @@ impl Thrusters {
         }
     }
     
-    pub fn make_path(&mut self, what: AnyResource) -> Option<Path> {
-        let now = *self.memory.current.borrow();
-        self.memory.path_sanity(&now, &what)
-    }
-    
     pub fn move_to (&mut self, what: AnyResource) -> Result<i32, (InterruptOrder, i32)> {
         log::debug!("LazyBoone: Firing up the engines to move");
         let now = *self.memory.current.borrow();
@@ -499,7 +492,13 @@ impl Thrusters {
                     //Move failed
                     return Err((ord, counter))
                 } else {
-                    counter += 1;
+                    if let Ok((sender, new_id)) = res {
+                        self.memory.override_current_id(new_id);
+                        self.memory.planet_comms.borrow_mut().set_tx(sender);
+                        counter += 1;
+                    } else {
+                        panic!("Just excluded err with previous let");
+                    }
                 }
             }
             Ok(counter)
@@ -531,30 +530,39 @@ impl Thrusters {
 
             if let Some(found) = found {
                 let res = self.orchestrator_comms.borrow().request_move(*found);
-                if res.is_ok() {
-                    //If new planet, explore, else move failed
-                    if let Err(ord) = self.memory.explore() {
-                        return Err((ord, counter))
-                    }
-                } else {
-                    let ord = res.expect_err("res is Err but also not Err");
+                match res {
+                    Ok((sender, new_id)) => {
+                        self.memory.override_current_id(new_id);
+                        self.memory.planet_comms.borrow_mut().set_tx(sender);
 
-                    if ord == InterruptOrder::None {
-                        self.memory.forget_planet(found);
+                        //If new planet, explore, else move failed
+                        if let Err(ord) = self.memory.explore() {
+                            return Err((ord, counter))
+                        }
                     }
-                    return Err((ord, counter - 1))
+                    Err(ord) => {
+                        if ord == InterruptOrder::None {
+                            self.memory.forget_planet(found);
+                        }
+                        return Err((ord, counter - 1))
+                    }
                 }
             } else {
                 let next_step = (rand::random::<i32>() % adjs.len() as i32) as usize; //Pseudo-random to guarantee no infinite loops
                 let now = *self.memory.current.borrow();
-                let res = self.orchestrator_comms.borrow().request_move(self.memory.map.get(&now).expect("Current planet is somehow not mapped").adj[next_step]);
-                if let Err(ord) = res {
-                    //request_move failed
-                    if ord == InterruptOrder::None {
-                        let what = self.memory.map.get(&now).expect("Current planet is somehow not mapped").adj[next_step];
-                        self.memory.forget_planet(&what);
+                match self.orchestrator_comms.borrow().request_move(self.memory.map.get(&now).expect("Current planet is somehow not mapped").adj[next_step]) {
+                    Err(ord) => {
+                        //request_move failed
+                        if ord == InterruptOrder::None {
+                            let what = self.memory.map.get(&now).expect("Current planet is somehow not mapped").adj[next_step];
+                            self.memory.forget_planet(&what);
+                        }
+                        return Err((ord, counter));
+                    },
+                    Ok((sender, new_id)) => {
+                        self.memory.override_current_id(new_id);
+                        self.memory.planet_comms.borrow_mut().set_tx(sender);
                     }
-                    return Err((ord, counter));
                 }
             }
         }

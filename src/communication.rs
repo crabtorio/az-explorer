@@ -24,7 +24,6 @@ pub struct OrchestratorComms {
 
 pub struct PlanetComms {
     id: ID,
-    current: Rc<RefCell<ID>>,
     channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>,
 }
 
@@ -148,11 +147,10 @@ impl OrchestratorComms {
 }
 
 impl PlanetComms {
-    pub fn new(id: ID, current:Rc<RefCell<ID>>, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>) -> PlanetComms {
+    pub fn new(id: ID, channel: LoggedChannel<ExplorerToPlanet, PlanetToExplorer>) -> PlanetComms {
         log::trace!("LazyBoone: Creating PlanetComms");
         Self {
             id,
-            current,
             channel,
         }
     }

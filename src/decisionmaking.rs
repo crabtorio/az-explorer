@@ -208,20 +208,12 @@ impl Brain {
             planet_comms
         }
     }
-    pub fn clear_plans(&mut self) {
-        log::trace!("LazyBoone: Realizing he could do better with his life");
-        self.plans.clear();
-    }
 
     pub fn reset(&mut self) {
         log::trace!("LazyBoone: Thinking it's time for a new start");
         self.current_score = Score {s: 0};
         self.plans.clear();
         self.last_failure = None;
-    }
-
-    fn add_score(&mut self, other: Score) {
-        self.current_score += other;
     }
 
     fn best_plan(&self, memory: &mut Memory, inventory: &Inventory) -> Option<usize> {
