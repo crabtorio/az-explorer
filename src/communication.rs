@@ -94,7 +94,12 @@ impl OrchestratorComms {
             match self.channel.recv() {
                 Ok(OrchestratorToExplorer::MoveToPlanet {sender_to_new_planet: a, planet_id: b}) => {
                     if let Some(innie) = a {
-                        Ok((innie, b))
+                        if self.channel.send(ExplorerToOrchestrator::MovedToPlanetResult {explorer_id:self.id, planet_id: dest}).is_ok() {
+                            Ok((innie, b))
+                        } else {
+                            panic!("Unable to send movement ack");
+                        }
+
                     } else {
                         Err(InterruptOrder::None)
                     }
