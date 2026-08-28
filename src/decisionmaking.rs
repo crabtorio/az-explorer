@@ -49,6 +49,9 @@ impl Expectedscore {
     fn to_score(self) -> Score {
         Score{s: self.s}
     }
+    fn positive(&self) -> bool {
+        self.s > 0
+    }
 }
 
 impl Add for Expectedscore {
@@ -232,7 +235,7 @@ impl Brain {
         for i in 0..self.plans.len() {
             if self.last_failure.is_none() || ( self.plans.len() == 1 || self.last_failure.clone().expect("Just checked it is not none") != i) { //clone not to consume it, if the plan is the last failure it does not qualify, unless it is the only plan
                 let score = self.plans[i].get_score(memory, inventory);
-                if best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned") { //The or short circuiting protects the unwrap
+                if score.positive() && (best_score.is_none() || score > best_score.clone().expect("Best score is not None, but also not Some, law of excluded middle be damned")) { //The or short circuiting protects the unwrap
                     best_scorer = Some(i);
                     best_score = Some(score);
                 }
