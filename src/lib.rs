@@ -85,7 +85,16 @@ impl  ExplorerTrait for Explorer {
             self.brain.populate_plans();
             let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
             match order {
-                Ok(()) => {}
+                Ok(()) => {
+                    //Just in case, better poll the orchestrator in case the best plan was idling (which doesn't include comms)
+                    match self.orchestrator_comms.borrow().poll() {
+                        Ok(()) => {/*Proceed to loop*/}
+                        Err(InterruptOrder::None) => {panic!("Polling encountered some unknown error")},
+                        Err(InterruptOrder::Reset) => {return AiReturn::Reset},
+                        Err(InterruptOrder::Stop) => {return AiReturn::Stop},
+                        Err(InterruptOrder::Die) => {return AiReturn::Kill}
+                    };
+                }
                 Err(InterruptOrder::None) => {},
                 Err(InterruptOrder::Reset) => {
                     log::trace!("LazyBoone: Resetting command propagated at head");

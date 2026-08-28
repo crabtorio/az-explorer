@@ -286,7 +286,7 @@ impl Brain {
                 }
             }
             None => {
-                //Nothing to do
+                //Nothing to do, better poll just in case
                 log::trace!("LazyBoone: Idling, loitering even");
                 Ok(())
             }

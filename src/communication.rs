@@ -117,6 +117,33 @@ impl OrchestratorComms {
             panic!("Can't send the explorer move request");
         }
     }
+    
+    pub fn poll(&self) -> Result<(), InterruptOrder> {
+        log::trace!("LazyBoone: Making sure perseverance is appreciated");
+        
+        match self.channel.poll() {
+            Ok(None) => {
+                //Go ahead
+                Ok(())
+            },
+            Ok(Some(OrchestratorToExplorer::KillExplorer)) => {
+                Err(InterruptOrder::Die)
+            },
+            Ok(Some(OrchestratorToExplorer::ResetExplorerAI)) => {
+                Err(InterruptOrder::Reset)
+            },
+            Ok(Some(OrchestratorToExplorer::StopExplorerAI)) => {
+                Err(InterruptOrder::Stop)
+            },
+            Ok(Some(_)) => {
+                panic!("Unexpected request");
+            }
+            Err(_) => {
+                panic!("Could not poll Orchestrator");
+            }
+        }
+        
+    }
 }
 
 impl PlanetComms {
