@@ -53,7 +53,7 @@ impl  ExplorerTrait for Explorer {
         planet_channel: explorer_common::logged_channel::LoggedChannel<common_game::protocols::planet_explorer::ExplorerToPlanet, common_game::protocols::planet_explorer::PlanetToExplorer>,
         orchestrator_channel: explorer_common::logged_channel::LoggedChannel::<common_game::protocols::orchestrator_explorer::ExplorerToOrchestrator<BagContent>, common_game::protocols::orchestrator_explorer::OrchestratorToExplorer>
     ) -> Self {
-        log::trace!("Explorer: Calling 'New' on LazyBoone");
+        log::debug!("Explorer: Calling 'New' on LazyBoone");
 
         let planet_id = Rc::new(RefCell::new(digit_planet_id));
         let inventory = Inventory::new(bag);
@@ -72,7 +72,7 @@ impl  ExplorerTrait for Explorer {
         }
     }
     fn explorer_ai(&mut self) -> AiReturn {
-        log::trace!("LazyBoone: Exploring starting planet");
+        log::debug!("LazyBoone: Exploring starting planet");
         match self.thrusters.memory.explore() {
             Ok(()) => {/*Proceed to loop*/}
             Err(InterruptOrder::None) => {panic!("Initial exploration before loop somehow had a non-interruption error")},
@@ -81,7 +81,7 @@ impl  ExplorerTrait for Explorer {
             Err(InterruptOrder::Die) => {return AiReturn::Kill}
         }; //Guarantee to know where you are now
         loop {
-            log::trace!("LazyBoone: Explorer_AI ran for a tick");
+            log::debug!("LazyBoone: Explorer_AI ran for a tick");
             self.brain.populate_plans();
             let order = self.brain.solve_best_plan(&mut self.thrusters, &mut self.inventory);
             match order {
@@ -97,11 +97,11 @@ impl  ExplorerTrait for Explorer {
                 }
                 Err(InterruptOrder::None) => {},
                 Err(InterruptOrder::Reset) => {
-                    log::trace!("LazyBoone: Resetting command propagated at head");
+                    log::debug!("LazyBoone: Resetting command propagated at head");
                     return AiReturn::Reset
                 },
                 Err(InterruptOrder::Stop) => {
-                    log::trace!("LazyBoone: Stopping command propagated at head");
+                    log::debug!("LazyBoone: Stopping command propagated at head");
                     return AiReturn::Stop
                 },
                 Err(InterruptOrder::Die) => {
