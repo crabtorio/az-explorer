@@ -25,7 +25,7 @@ impl Inventory {
     }
 
     pub fn get_basic(&mut self, what: BasicResourceType) -> Option<GenericResource> {
-        log::trace!("LazyBoone: Pulling a {:?} from his pockets", what);
+        log::debug!("LazyBoone: Pulling a {:?} from his pockets", what);
         let mut ret = None;
         for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
@@ -40,7 +40,7 @@ impl Inventory {
         ret
     }
     pub fn get_complex(&mut self, what: ComplexResourceType) -> Option<GenericResource> {
-        log::trace!("LazyBoone: Pulling a {:?} from his backpack", what);
+        log::debug!("LazyBoone: Pulling a {:?} from his backpack", what);
         let mut ret = None;
         for i in 0..self.bag.resources.len() {
             match self.bag.resources[i].get_type() {
@@ -54,4 +54,5 @@ impl Inventory {
         }
         ret
     }
+
 }

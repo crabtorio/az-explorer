@@ -199,7 +199,7 @@ impl PlanetComms {
     }
 
     pub fn try_get(&self, what: BasicResourceType) -> Option<BasicResource>  {
-        log::trace!("LazyBoone: Requesting basic resource from planet");
+        log::debug!("LazyBoone: Requesting basic resource from planet");
         if self.channel.send(ExplorerToPlanet::GenerateResourceRequest {explorer_id: self.id, resource: what}).is_ok() {
             if let Ok(PlanetToExplorer::GenerateResourceResponse {resource}) = self.channel.recv() {
                 resource
@@ -212,7 +212,7 @@ impl PlanetComms {
     }
 
     pub fn try_craft(&self, bag: &mut Inventory, what: ComplexResourceType) -> Option<ComplexResource> {
-        log::trace!("LazyBoone: Requesting complex resource from planet");
+        log::debug!("LazyBoone: Requesting complex resource from planet");
         let request = match what {
             ComplexResourceType::AIPartner => {
                 if bag.has_resource(ResourceType::Complex(Robot)) > 0 && bag.has_resource(ResourceType::Complex(Diamond)) > 0 {
